@@ -1,0 +1,47 @@
+# Saori ERP
+
+## Dependencias de Sistema
+node_modules/
+.pnp
+.pnp.js
+
+## Testing
+coverage/
+
+## Producción
+dist/
+dist-electron/
+release/
+*.exe
+*.dmg
+*.deb
+
+## Base de Datos
+*.db
+*.db-journal
+*.db-wal
+
+## Entorno
+.env
+.env.local
+.env.*.local
+
+## Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+## IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+## Prisma
+prisma/*.db
+
+## Compilación
+*.tsbuildinfo

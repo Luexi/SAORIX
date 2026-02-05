@@ -1,0 +1,412 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./saori.db"
+}
+
+// ===================
+// USUARIOS Y AUTH
+// ===================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("VENDEDOR") // ADMIN, SUPERVISOR, VENDEDOR
+  active    Boolean  @default(true)
+  
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  
+  sales     Sale[]
+  cashRegisters CashRegister[]
+  activityLogs  ActivityLog[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===================
+// SUCURSALES
+// ===================
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  isMain    Boolean  @default(false)
+  active    Boolean  @default(true)
+  
+  users     User[]
+  products  ProductStock[]
+  sales     Sale[]
+  cashRegisters CashRegister[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===================
+// PRODUCTOS E INVENTARIO
+// ===================
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  color       String?   // Para UI
+  
+  products    Product[]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  barcode     String?
+  name        String
+  description String?
+  
+  price       Float
+  cost        Float?
+  taxRate     Float    @default(0.16) // IVA México 16%
+  
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  
+  minStock    Int      @default(5)
+  active      Boolean  @default(true)
+  
+  stocks      ProductStock[]
+  saleItems   SaleItem[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProductStock {
+  id        String   @id @default(uuid())
+  
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  
+  quantity  Int      @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, branchId])
+}
+
+// ===================
+// CLIENTES (CRM)
+// ===================
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  
+  // Para facturación (futuro)
+  rfc       String?
+  businessName String?
+  
+  tags      String?  // JSON array: ["VIP", "FRECUENTE"]
+  notes     String?
+  
+  sales     Sale[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===================
+// VENTAS
+// ===================
+
+model Sale {
+  id          String     @id @default(uuid())
+  folio       String     @unique // SAL-00001
+  
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  
+  branchId    String
+  branch      Branch     @relation(fields: [branchId], references: [id])
+  
+  customerId  String?
+  customer    Customer?  @relation(fields: [customerId], references: [id])
+  
+  items       SaleItem[]
+  payments    Payment[]
+  
+  subtotal    Float
+  taxAmount   Float
+  discount    Float      @default(0)
+  total       Float
+  
+  status      String     @default("COMPLETED") // PENDING, COMPLETED, CANCELLED
+  notes       String?
+  
+  cashRegisterId String?
+  cashRegister   CashRegister? @relation(fields: [cashRegisterId], references: [id])
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model SaleItem {
+  id          String   @id @default(uuid())
+  
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  
+  productName String   // Snapshot del nombre
+  productCode String   // Snapshot del código
+  
+  quantity    Int
+  unitPrice   Float
+  discount    Float    @default(0)
+  subtotal    Float
+  
+  createdAt   DateTime @default(now())
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  
+  method      String   // CASH, CARD, TRANSFER
+  amount      Float
+  reference   String?  // Número de referencia/autorizacion
+  
+  createdAt   DateTime @default(now())
+}
+
+// ===================
+// CAJA
+// ===================
+
+model CashRegister {
+  id          String   @id @default(uuid())
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  branchId    String
+  branch      Branch   @relation(fields: [branchId], references: [id])
+  
+  openingAmount Float
+  closingAmount Float?
+  
+  expectedAmount Float?
+  difference     Float?
+  
+  status      String   @default("OPEN") // OPEN, CLOSED
+  notes       String?
+  
+  sales       Sale[]
+  movements   CashMovement[]
+  
+  openedAt    DateTime @default(now())
+  closedAt    DateTime?
+}
+
+model CashMovement {
+  id          String   @id @default(uuid())
+  
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+  
+  type        String   // IN, OUT
+  amount      Float
+  reason      String
+  
+  createdAt   DateTime @default(now())
+}
+
+// ===================
+// GASTOS Y FINANZAS
+// ===================
+
+model ExpenseCategory {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  
+  expenses    Expense[]
+  
+  createdAt   DateTime  @default(now())
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  
+  categoryId  String
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  
+  amount      Float
+  description String
+  date        DateTime @default(now())
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===================
+// PROVEEDORES
+// ===================
+
+model Supplier {
+  id          String   @id @default(uuid())
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?
+  
+  purchases   Purchase[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Purchase {
+  id          String   @id @default(uuid())
+  folio       String   @unique
+  
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  
+  total       Float
+  status      String   @default("PENDING") // PENDING, RECEIVED, CANCELLED
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===================
+// RECURSOS HUMANOS
+// ===================
+
+model Position {
+  id          String     @id @default(uuid())
+  name        String     @unique // Gerente, Cajero, Almacenista, etc.
+  description String?
+  baseSalary  Float      @default(0)
+  active      Boolean    @default(true)
+  
+  employees   Employee[]
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Employee {
+  id          String     @id @default(uuid())
+  code        String     @unique // EMP-001
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  
+  positionId  String
+  position    Position   @relation(fields: [positionId], references: [id])
+  
+  salary      Float      // Salario actual (puede diferir del base del puesto)
+  hireDate    DateTime
+  birthDate   DateTime?
+  
+  // Relación opcional con User (si el empleado tiene acceso al sistema)
+  userId      String?    @unique
+  
+  active      Boolean    @default(true)
+  notes       String?
+  
+  payrolls    Payroll[]
+  schedules   Schedule[]
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Payroll {
+  id          String     @id @default(uuid())
+  folio       String     @unique // NOM-000001
+  
+  employeeId  String
+  employee    Employee   @relation(fields: [employeeId], references: [id])
+  
+  period      String     // "2026-01" (año-mes)
+  startDate   DateTime
+  endDate     DateTime
+  
+  baseSalary  Float
+  bonuses     Float      @default(0)
+  deductions  Float      @default(0)
+  total       Float      // baseSalary + bonuses - deductions
+  
+  status      String     @default("PENDING") // PENDING, PAID, CANCELLED
+  paidAt      DateTime?
+  
+  notes       String?
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Schedule {
+  id          String     @id @default(uuid())
+  
+  employeeId  String
+  employee    Employee   @relation(fields: [employeeId], references: [id])
+  
+  dayOfWeek   Int        // 0=Domingo, 1=Lunes, ..., 6=Sábado
+  startTime   String     // "09:00"
+  endTime     String     // "18:00"
+  
+  active      Boolean    @default(true)
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// ===================
+// AUDITORÍA
+// ===================
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  action      String   // LOGIN, LOGOUT, CREATE_SALE, etc.
+  entity      String?  // Sale, Product, etc.
+  entityId    String?
+  details     String?  // JSON con detalles
+  
+  createdAt   DateTime @default(now())
+}

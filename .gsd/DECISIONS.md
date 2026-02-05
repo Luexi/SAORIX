@@ -1,51 +1,62 @@
-# Architecture Decision Records (ADR)
+# DECISIONS.md - Decisiones Arquitectónicas
 
-<!-- 
-INSTRUCCIONES:
-Documenta aquí las DECISIONES TÉCNICAS importantes.
-Cada decisión debe explicar: QUÉ decidiste, POR QUÉ, y qué ALTERNATIVAS consideraste.
--->
+## ADR-001: SQLite como base de datos inicial
 
-## 📝 Formato de Decisión
+**Fecha**: 2026-02-05
+**Estado**: Aceptado
 
-Para cada decisión, usa este formato:
+### Contexto
 
-```
-### [ADR-XXX] Título de la decisión
+Necesitamos una base de datos para la aplicación de escritorio.
 
-**Fecha:** YYYY-MM-DD
-**Estado:** Propuesta | Aceptada | Rechazada | Obsoleta
-**Contexto:** [Por qué necesitamos tomar esta decisión]
-**Decisión:** [Qué decidimos hacer]
-**Consecuencias:** [Implicaciones positivas y negativas]
-**Alternativas consideradas:** [Otras opciones que evaluamos]
-```
+### Decisión
+
+Usar SQLite con Prisma ORM, con plan de migración a PostgreSQL/Supabase en el futuro.
+
+### Consecuencias
+
+- ✅ Zero configuración para usuarios
+- ✅ Archivo único para backup
+- ⚠️ Limitaciones de concurrencia (aceptable para single-user)
 
 ---
 
-## Decisiones del Proyecto
+## ADR-002: Fastify sobre Express
 
-### [ADR-001] Ejemplo: Selección de Framework
+**Fecha**: 2026-02-05
+**Estado**: Aceptado
 
-**Fecha:** 2026-01-28
-**Estado:** Propuesta
+### Contexto
 
-**Contexto:**
-Necesitamos elegir el framework principal para el proyecto. Requisitos: rendimiento, SEO, facilidad de uso.
+Necesitamos un framework API para el backend embebido.
 
-**Decisión:**
-Usar Astro como framework principal.
+### Decisión
 
-**Consecuencias:**
-- ✅ Excelente rendimiento (HTML estático por defecto)
-- ✅ Componentes islas para JavaScript mínimo
-- ⚠️ Curva de aprendizaje para el equipo
-- ⚠️ Ecosistema más pequeño que Next.js
+Usar Fastify por su rendimiento superior y sistema de plugins.
 
-**Alternativas consideradas:**
-- Next.js: Mayor ecosistema pero más JavaScript en cliente
-- SvelteKit: Excelente DX pero menos recursos de aprendizaje
+### Consecuencias
+
+- ✅ ~2x más rápido que Express
+- ✅ Validación de schemas integrada
+- ✅ Soporte JWT nativo
 
 ---
 
-<!-- Agrega más decisiones abajo siguiendo el mismo formato -->
+## ADR-003: Zustand sobre Redux
+
+**Fecha**: 2026-02-05
+**Estado**: Aceptado
+
+### Contexto
+
+Manejo de estado global en React.
+
+### Decisión
+
+Usar Zustand por su simplicidad.
+
+### Consecuencias
+
+- ✅ Boilerplate mínimo
+- ✅ TypeScript first-class
+- ✅ Sin providers necesarios

@@ -1,70 +1,48 @@
-# Project Roadmap
+# ROADMAP.md - Plan de Desarrollo
 
-<!-- 
-INSTRUCCIONES:
-Este archivo organiza tu proyecto en FASES.
-Se actualiza automáticamente cuando usas comandos GSD como /plan, /execute, /verify
--->
+## Fase 1: Fundamentos ✅ EN PROGRESO
+>
+> Estado: 🔄 En ejecución
 
-## 📍 Estado Actual
+### Tareas
 
-**Fase activa:** [Número de fase actual]
-
-**Última actualización:** [Fecha]
-
----
-
-## 🗺️ Fases del Proyecto
-
-### Fase 1: [Nombre de la fase]
-
-**Objetivo:** [Qué se logra en esta fase]
-
-**Estado:** ⏳ Pendiente | 🔄 En progreso | ✅ Completada
-
-**Tareas principales:**
-- [ ] [Tarea 1]
-- [ ] [Tarea 2]
-- [ ] [Tarea 3]
+- [x] Inicializar estructura `.gsd/`
+- [ ] Crear `electron/main.ts` funcional
+- [ ] Agregar Error Boundary global en React
+- [ ] Setup básico de tests (Vitest)
+- [ ] Validación Zod en formularios críticos
 
 ---
 
-### Fase 2: [Nombre de la fase]
+## Fase 2: Módulos Faltantes
+>
+> Estado: ⏳ Pendiente
 
-**Objetivo:** [Qué se logra en esta fase]
+### Tareas
 
-**Estado:** ⏳ Pendiente | 🔄 En progreso | ✅ Completada
-
-**Tareas principales:**
-- [ ] [Tarea 1]
-- [ ] [Tarea 2]
-
----
-
-### Fase 3: [Nombre de la fase]
-
-**Objetivo:** [Qué se logra en esta fase]
-
-**Estado:** ⏳ Pendiente | 🔄 En progreso | ✅ Completada
-
-**Tareas principales:**
-- [ ] [Tarea 1]
-- [ ] [Tarea 2]
+- [ ] Implementar página Historial de Ventas
+- [ ] Implementar página de Usuarios (CRUD UI)
+- [ ] Implementar página de Proveedores
+- [ ] Implementar página de Configuración
+- [ ] Implementar UI de Caja Registradora
 
 ---
 
-## 🎯 Milestones
+## Fase 3: Polish & QA
+>
+> Estado: ⏳ Pendiente
 
-- **Milestone 1:** [Nombre] - [Fecha objetivo]
-  - Fases incluidas: 1-2
-  - Entregables: [Qué estará listo]
+### Tareas
 
-- **Milestone 2:** [Nombre] - [Fecha objetivo]
-  - Fases incluidas: 3-4
-  - Entregables: [Qué estará listo]
+- [ ] Tests E2E para flujos críticos
+- [ ] Manejo offline/reconexión
+- [ ] Loading states y optimistic updates
+- [ ] Build producción Windows
+- [ ] Documentación de usuario
 
 ---
 
-## 📝 Notas
+## Notas
 
-[Observaciones sobre el roadmap, cambios de alcance, etc.]
+- Fase 4 (Features Avanzados) pospuesta post-MVP
+- Prioridad: estabilidad sobre nuevas features

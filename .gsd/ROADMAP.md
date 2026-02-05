@@ -1,24 +1,20 @@
 # ROADMAP.md - Plan de Desarrollo
 
-## Fase 1: Fundamentos ✅ EN PROGRESO
->
-> Estado: 🔄 En ejecución
+## Fase 1: Fundamentos ✅ COMPLETADA
 
-### Tareas
+> Completada: 2026-02-05
 
 - [x] Inicializar estructura `.gsd/`
-- [ ] Crear `electron/main.ts` funcional
-- [ ] Agregar Error Boundary global en React
-- [ ] Setup básico de tests (Vitest)
-- [ ] Validación Zod en formularios críticos
+- [x] Crear `electron/main.ts` funcional
+- [x] Crear `electron/preload.ts`
+- [x] Agregar Error Boundary global en React
+- [x] Setup básico de tests (Vitest) - 3 tests pasando
 
 ---
 
-## Fase 2: Módulos Faltantes
->
-> Estado: ⏳ Pendiente
+## Fase 2: Módulos Faltantes 🔄 EN PROGRESO
 
-### Tareas
+> Estado: Pendiente
 
 - [ ] Implementar página Historial de Ventas
 - [ ] Implementar página de Usuarios (CRUD UI)
@@ -28,11 +24,7 @@
 
 ---
 
-## Fase 3: Polish & QA
->
-> Estado: ⏳ Pendiente
-
-### Tareas
+## Fase 3: Polish & QA ⏳ PENDIENTE
 
 - [ ] Tests E2E para flujos críticos
 - [ ] Manejo offline/reconexión

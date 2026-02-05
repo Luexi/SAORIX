@@ -11,6 +11,10 @@ import Personal from '@/pages/Personal'
 import Reportes from '@/pages/Reportes'
 import Logs from '@/pages/Logs'
 import Proximamente from '@/pages/Proximamente'
+import HistorialVentas from '@/pages/HistorialVentas'
+import Proveedores from '@/pages/Proveedores'
+import Usuarios from '@/pages/Usuarios'
+import Configuracion from '@/pages/Configuracion'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -53,20 +57,20 @@ function App() {
                     }
                 >
                     <Route index element={<Dashboard />} />
-                    <Route path="ventas" element={<Proximamente titulo="Historial Ventas" />} />
+                    <Route path="ventas" element={<HistorialVentas />} />
                     <Route path="pos" element={<POS />} />
                     <Route path="clientes" element={<Clientes />} />
                     <Route path="productos" element={<Inventario />} />
                     <Route path="finanzas" element={<AdminRoute><Finanzas /></AdminRoute>} />
                     <Route path="personal" element={<AdminRoute><Personal /></AdminRoute>} />
                     <Route path="reportes" element={<Reportes />} />
-                    <Route path="proveedores" element={<Proximamente titulo="Proveedores" />} />
-                    <Route path="usuarios" element={<Proximamente titulo="Usuarios" />} />
+                    <Route path="proveedores" element={<Proveedores />} />
+                    <Route path="usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
                     <Route path="logs" element={<AdminRoute><Logs /></AdminRoute>} />
                     <Route path="facturacion" element={<Proximamente titulo="Facturación Electrónica" proximamente />} />
                     <Route path="nomina" element={<Proximamente titulo="Nómina" proximamente />} />
                     <Route path="contabilidad" element={<Proximamente titulo="Contabilidad" proximamente />} />
-                    <Route path="configuracion" element={<Proximamente titulo="Configuración" />} />
+                    <Route path="configuracion" element={<Configuracion />} />
                 </Route>
 
                 {/* 404 */}

@@ -167,68 +167,75 @@ export default function Usuarios() {
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-soft overflow-hidden border border-gray-100 dark:border-gray-700">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-gray-50 dark:bg-gray-700/50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuario</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rol</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
-                                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {users.map((user) => (
-                                <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center gap-3">
-                                            <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                                                {user.name.charAt(0)}
+            {loading ? (
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-soft p-12 text-center">
+                    <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+                    <p className="mt-4 text-gray-500 dark:text-gray-400">Cargando usuarios...</p>
+                </div>
+            ) : (
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-soft overflow-hidden border border-gray-100 dark:border-gray-700">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                <tr>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuario</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rol</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
+                                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {users.map((user) => (
+                                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex items-center gap-3">
+                                                <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+                                                    {user.name.charAt(0)}
+                                                </div>
+                                                <span className="font-medium text-gray-900 dark:text-white">{user.name}</span>
                                             </div>
-                                            <span className="font-medium text-gray-900 dark:text-white">{user.name}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                        {user.email}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                            {user.email}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
                                                 user.role === 'SUPERVISOR' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                                                     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                            }`}>
-                                            {user.role}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${user.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                            }`}>
-                                            {user.active ? 'Activo' : 'Inactivo'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                        <div className="flex justify-end gap-2">
-                                            <button
-                                                onClick={() => handleEdit(user)}
-                                                className="size-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">edit</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(user.id)}
-                                                className="size-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">delete</span>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                                }`}>
+                                                {user.role}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${user.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                                }`}>
+                                                {user.active ? 'Activo' : 'Inactivo'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={() => handleEdit(user)}
+                                                    className="size-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">edit</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(user.id)}
+                                                    className="size-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Modal */}
             {showModal && (

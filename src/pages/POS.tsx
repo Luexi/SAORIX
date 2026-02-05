@@ -30,7 +30,6 @@ export default function POS() {
     const [showPaymentModal, setShowPaymentModal] = useState(false)
     const [selectedCustomer, setSelectedCustomer] = useState(mockCustomers[0]) // Público en General por defecto
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
-    const [customerSearch, setCustomerSearch] = useState('')
 
     const {
         items,
@@ -53,15 +52,6 @@ export default function POS() {
             return matchesSearch && matchesCategory
         })
     }, [search, selectedCategory])
-
-    // Filtrar clientes
-    const filteredCustomers = useMemo(() => {
-        if (!customerSearch) return mockCustomers
-        return mockCustomers.filter(c =>
-            c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-            (c.email && c.email.toLowerCase().includes(customerSearch.toLowerCase()))
-        )
-    }, [customerSearch])
 
     // Procesar pago
     const handlePayment = (method: string, amountPaid: number) => {

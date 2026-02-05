@@ -607,6 +607,76 @@ fastify.delete('/api/products/:id', {
 
 // ======== RUTAS DE VENTAS ========
 
+// GET all sales (for sales history)
+fastify.get('/api/sales', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'sales:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver ventas' })
+    }
+
+    const { page = 1, limit = 50, status, paymentMethod, dateFrom, dateTo } = request.query as {
+        page?: number
+        limit?: number
+        status?: string
+        paymentMethod?: string
+        dateFrom?: string
+        dateTo?: string
+    }
+
+    const where: any = {}
+
+    if (status) where.status = status.toUpperCase()
+    if (paymentMethod) where.paymentMethod = paymentMethod.toUpperCase()
+    if (dateFrom) where.createdAt = { ...where.createdAt, gte: new Date(dateFrom) }
+    if (dateTo) where.createdAt = { ...where.createdAt, lte: new Date(dateTo + 'T23:59:59') }
+
+    const sales = await prisma.sale.findMany({
+        where,
+        take: Number(limit),
+        skip: (Number(page) - 1) * Number(limit),
+        include: {
+            items: true,
+            customer: { select: { name: true } },
+            user: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+    })
+
+    const total = await prisma.sale.count({ where })
+
+    return {
+        sales: sales.map(s => ({
+            id: s.id,
+            folio: s.folio,
+            total: s.total,
+            subtotal: s.subtotal,
+            tax: s.taxAmount,
+            paymentMethod: s.paymentMethod?.toLowerCase() || 'cash',
+            status: s.status?.toLowerCase() || 'completed',
+            customerName: s.customer?.name || null,
+            userName: s.user?.name || 'Sistema',
+            createdAt: s.createdAt,
+            items: s.items.map(i => ({
+                productName: i.productName,
+                productCode: i.productCode,
+                quantity: i.quantity,
+                priceAtSale: i.unitPrice,
+                discount: i.discount,
+                subtotal: i.subtotal,
+            })),
+        })),
+        pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            totalPages: Math.ceil(total / Number(limit)),
+        },
+    }
+})
+
 fastify.get('/api/sales/daily', {
     preHandler: [fastify.authenticate as any],
 }, async (request, reply) => {

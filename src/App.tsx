@@ -1,22 +1,32 @@
+import { Suspense, lazy, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
-import Layout from '@/components/layout/Layout'
-import Login from '@/pages/Login'
-import Dashboard from '@/pages/Dashboard'
-import POS from '@/pages/POS'
-import Inventario from '@/pages/Inventario'
-import Clientes from '@/pages/Clientes'
-import Finanzas from '@/pages/Finanzas'
-import Personal from '@/pages/Personal'
-import Reportes from '@/pages/Reportes'
-import Logs from '@/pages/Logs'
-import Proximamente from '@/pages/Proximamente'
-import HistorialVentas from '@/pages/HistorialVentas'
-import Proveedores from '@/pages/Proveedores'
-import Usuarios from '@/pages/Usuarios'
-import Configuracion from '@/pages/Configuracion'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+const Layout = lazy(() => import('@/components/layout/Layout'))
+const Login = lazy(() => import('@/pages/Login'))
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const POS = lazy(() => import('@/pages/POS'))
+const Inventario = lazy(() => import('@/pages/Inventario'))
+const Clientes = lazy(() => import('@/pages/Clientes'))
+const Finanzas = lazy(() => import('@/pages/Finanzas'))
+const Personal = lazy(() => import('@/pages/Personal'))
+const Reportes = lazy(() => import('@/pages/Reportes'))
+const Logs = lazy(() => import('@/pages/Logs'))
+const Proximamente = lazy(() => import('@/pages/Proximamente'))
+const HistorialVentas = lazy(() => import('@/pages/HistorialVentas'))
+const Proveedores = lazy(() => import('@/pages/Proveedores'))
+const Compras = lazy(() => import('@/pages/Compras'))
+const Usuarios = lazy(() => import('@/pages/Usuarios'))
+const Configuracion = lazy(() => import('@/pages/Configuracion'))
+const Cotizaciones = lazy(() => import('@/pages/Cotizaciones'))
+const CotizacionNueva = lazy(() => import('@/pages/CotizacionNueva'))
+const PipelineCRM = lazy(() => import('@/pages/PipelineCRM'))
+
+function RouteFallback() {
+    return <div className="p-6 text-sm text-gray-500">Cargando modulo...</div>
+}
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
     if (!isAuthenticated) {
@@ -26,7 +36,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <>{children}</>
 }
 
-function AdminRoute({ children }: { children: React.ReactNode }) {
+function AdminRoute({ children }: { children: ReactNode }) {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
     const isAdmin = useAuthStore((state) => state.isAdmin)
 
@@ -44,38 +54,40 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function App() {
     return (
         <BrowserRouter>
-            <Routes>
-                <Route path="/login" element={<Login />} />
-
-                {/* Rutas protegidas */}
-                <Route
-                    path="/"
-                    element={
-                        <ProtectedRoute>
-                            <Layout />
-                        </ProtectedRoute>
-                    }
-                >
-                    <Route index element={<Dashboard />} />
-                    <Route path="ventas" element={<HistorialVentas />} />
-                    <Route path="pos" element={<POS />} />
-                    <Route path="clientes" element={<Clientes />} />
-                    <Route path="productos" element={<Inventario />} />
-                    <Route path="finanzas" element={<AdminRoute><Finanzas /></AdminRoute>} />
-                    <Route path="personal" element={<AdminRoute><Personal /></AdminRoute>} />
-                    <Route path="reportes" element={<Reportes />} />
-                    <Route path="proveedores" element={<Proveedores />} />
-                    <Route path="usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
-                    <Route path="logs" element={<AdminRoute><Logs /></AdminRoute>} />
-                    <Route path="facturacion" element={<Proximamente titulo="Facturación Electrónica" proximamente />} />
-                    <Route path="nomina" element={<Proximamente titulo="Nómina" proximamente />} />
-                    <Route path="contabilidad" element={<Proximamente titulo="Contabilidad" proximamente />} />
-                    <Route path="configuracion" element={<Configuracion />} />
-                </Route>
-
-                {/* 404 */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route
+                        path="/"
+                        element={
+                            <ProtectedRoute>
+                                <Layout />
+                            </ProtectedRoute>
+                        }
+                    >
+                        <Route index element={<Dashboard />} />
+                        <Route path="ventas" element={<HistorialVentas />} />
+                        <Route path="pos" element={<POS />} />
+                        <Route path="clientes" element={<Clientes />} />
+                        <Route path="productos" element={<Inventario />} />
+                        <Route path="finanzas" element={<AdminRoute><Finanzas /></AdminRoute>} />
+                        <Route path="personal" element={<AdminRoute><Personal /></AdminRoute>} />
+                        <Route path="reportes" element={<Reportes />} />
+                        <Route path="proveedores" element={<Proveedores />} />
+                        <Route path="compras" element={<Compras />} />
+                        <Route path="crm-pipeline" element={<PipelineCRM />} />
+                        <Route path="cotizaciones" element={<Cotizaciones />} />
+                        <Route path="cotizaciones/nueva" element={<CotizacionNueva />} />
+                        <Route path="usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
+                        <Route path="logs" element={<AdminRoute><Logs /></AdminRoute>} />
+                        <Route path="facturacion" element={<Proximamente titulo="Facturacion Electronica" proximamente />} />
+                        <Route path="nomina" element={<Proximamente titulo="Nomina" proximamente />} />
+                        <Route path="contabilidad" element={<Proximamente titulo="Contabilidad" proximamente />} />
+                        <Route path="configuracion" element={<Configuracion />} />
+                    </Route>
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+            </Suspense>
         </BrowserRouter>
     )
 }

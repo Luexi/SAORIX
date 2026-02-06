@@ -7,13 +7,16 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "npm run prepare:db-template && npm run electron:compile && vite build && electron-builder",
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder",
+    "electron:compile": "node scripts/build-electron.mjs",
+    "electron:build": "npm run prepare:db-template && npm run electron:compile && vite build && electron-builder",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "npm run electron:compile && node scripts/smoke-e2e.mjs",
+    "prepare:db-template": "node scripts/prepare-db-template.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
@@ -69,8 +72,13 @@
       "dist-electron/**/*"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "public/icon.ico"
-    }
+      "target": "nsis"
+    },
+    "extraResources": [
+      {
+        "from": "build-resources/saori-template.db",
+        "to": "db/saori-template.db"
+      }
+    ]
   }
 }

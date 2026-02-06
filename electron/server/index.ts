@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
+const isProduction = process.env.NODE_ENV === 'production'
 
 // Tipos
 interface UserPayload {
@@ -22,24 +23,45 @@ declare module '@fastify/jwt' {
     }
 }
 
+declare module 'fastify' {
+    interface FastifyInstance {
+        authenticate: (request: any, reply: any) => Promise<void>
+        requirePermission: (permission: string) => (request: any, reply: any) => Promise<void>
+    }
+}
+
 // Permisos por rol
 const PERMISSIONS = {
     ADMIN: [
         'sales:create', 'sales:read', 'sales:delete',
-        'products:create', 'products:read', 'products:update', 'products:delete',
+        'products:create', 'products:read', 'products:update', 'products:edit', 'products:delete',
+        'customers:create', 'customers:read', 'customers:update', 'customers:edit', 'customers:delete',
+        'expenses:create', 'expenses:read', 'expenses:delete',
+        'employees:create', 'employees:read', 'employees:update', 'employees:edit', 'employees:delete',
+        'suppliers:create', 'suppliers:read', 'suppliers:update', 'suppliers:delete',
+        'purchases:create', 'purchases:read', 'purchases:update', 'purchases:receive',
+        'leads:create', 'leads:read', 'leads:update', 'leads:delete',
         'users:create', 'users:read', 'users:update', 'users:delete',
         'logs:read',
         'reports:read',
     ],
     SUPERVISOR: [
         'sales:create', 'sales:read',
-        'products:create', 'products:read', 'products:update',
+        'products:create', 'products:read', 'products:update', 'products:edit',
+        'customers:create', 'customers:read', 'customers:update', 'customers:edit',
+        'expenses:create', 'expenses:read',
+        'employees:read',
+        'suppliers:create', 'suppliers:read', 'suppliers:update',
+        'purchases:create', 'purchases:read', 'purchases:update', 'purchases:receive',
+        'leads:create', 'leads:read', 'leads:update',
         'users:read',
         'reports:read',
     ],
     VENDEDOR: [
         'sales:create', 'sales:read',
         'products:read',
+        'customers:read',
+        'leads:create', 'leads:read', 'leads:update',
     ],
 } as const
 
@@ -51,23 +73,31 @@ function hasPermission(role: keyof typeof PERMISSIONS, permission: string): bool
 // Crear servidor
 const fastify = Fastify({
     logger: {
-        level: 'info',
-        transport: {
-            target: 'pino-pretty',
-            options: { colorize: true },
-        },
+        level: isProduction ? 'info' : 'debug',
     },
 })
 
 // Registrar plugins
 async function registerPlugins() {
+    const allowedOrigins = new Set(['http://localhost:5173', 'http://localhost:3000'])
     await fastify.register(cors, {
-        origin: ['http://localhost:5173', 'http://localhost:3000'],
+        origin: (origin, callback) => {
+            if (!origin || origin === 'null' || allowedOrigins.has(origin)) {
+                callback(null, true)
+                return
+            }
+            callback(new Error('Origin not allowed'), false)
+        },
         credentials: true,
     })
 
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret || jwtSecret.length < 32) {
+        throw new Error('JWT_SECRET no definido o demasiado corto (min 32 caracteres)')
+    }
+
     await fastify.register(jwt, {
-        secret: process.env.JWT_SECRET || 'saori-erp-secret-key-2024',
+        secret: jwtSecret,
         sign: { expiresIn: '8h' },
     })
 }
@@ -114,6 +144,114 @@ async function logAction(
 }
 
 // ======== RUTAS DE AUTENTICACIÓN ========
+
+fastify.get('/api/setup/status', async () => {
+    const usersCount = await prisma.user.count()
+    return {
+        requiresSetup: usersCount === 0,
+    }
+})
+
+fastify.post('/api/setup/first-user', async (request, reply) => {
+    const existingUsers = await prisma.user.count()
+    if (existingUsers > 0) {
+        return reply.code(409).send({
+            error: 'El sistema ya fue inicializado y no permite crear otro primer usuario.',
+        })
+    }
+
+    const { name, email, password, branchName } = (request.body || {}) as {
+        name?: string
+        email?: string
+        password?: string
+        branchName?: string
+    }
+
+    const safeName = name?.trim()
+    const safeEmail = email?.trim().toLowerCase()
+    const safeBranchName = branchName?.trim() || 'Sucursal Principal'
+
+    if (!safeName || !safeEmail || !password) {
+        return reply.code(400).send({ error: 'Nombre, email y contrasena son requeridos' })
+    }
+
+    if (password.length < 8) {
+        return reply.code(400).send({ error: 'La contrasena debe tener al menos 8 caracteres' })
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(safeEmail)) {
+        return reply.code(400).send({ error: 'Email invalido' })
+    }
+
+    const existingByEmail = await prisma.user.findUnique({ where: { email: safeEmail } })
+    if (existingByEmail) {
+        return reply.code(409).send({ error: 'El email ya existe en el sistema' })
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10)
+
+    const bootstrap = await prisma.$transaction(async (tx) => {
+        const branch = await tx.branch.create({
+            data: {
+                name: safeBranchName,
+                isMain: true,
+                active: true,
+            },
+        })
+
+        const user = await tx.user.create({
+            data: {
+                name: safeName,
+                email: safeEmail,
+                password: passwordHash,
+                role: 'ADMIN',
+                active: true,
+                branchId: branch.id,
+            },
+        })
+
+        await tx.activityLog.create({
+            data: {
+                userId: user.id,
+                action: 'SYSTEM_BOOTSTRAP',
+                entity: 'User',
+                entityId: user.id,
+                details: JSON.stringify({
+                    initializedBy: safeEmail,
+                    branch: safeBranchName,
+                }),
+            },
+        })
+
+        return { branch, user }
+    })
+
+    const payload: UserPayload = {
+        id: bootstrap.user.id,
+        email: bootstrap.user.email,
+        name: bootstrap.user.name,
+        role: 'ADMIN',
+        branchId: bootstrap.branch.id,
+    }
+
+    const token = fastify.jwt.sign(payload)
+    const refreshToken = fastify.jwt.sign(payload, { expiresIn: '7d' })
+
+    return {
+        user: {
+            id: bootstrap.user.id,
+            email: bootstrap.user.email,
+            name: bootstrap.user.name,
+            role: 'ADMIN',
+            branchId: bootstrap.branch.id,
+            branchName: bootstrap.branch.name,
+            permissions: PERMISSIONS.ADMIN,
+        },
+        token,
+        refreshToken,
+    }
+})
 
 fastify.post('/api/auth/login', async (request, reply) => {
     const { email, password } = request.body as { email: string; password: string }
@@ -629,7 +767,9 @@ fastify.get('/api/sales', {
     const where: any = {}
 
     if (status) where.status = status.toUpperCase()
-    if (paymentMethod) where.paymentMethod = paymentMethod.toUpperCase()
+    if (paymentMethod) {
+        where.payments = { some: { method: paymentMethod.toUpperCase() } }
+    }
     if (dateFrom) where.createdAt = { ...where.createdAt, gte: new Date(dateFrom) }
     if (dateTo) where.createdAt = { ...where.createdAt, lte: new Date(dateTo + 'T23:59:59') }
 
@@ -639,6 +779,7 @@ fastify.get('/api/sales', {
         skip: (Number(page) - 1) * Number(limit),
         include: {
             items: true,
+            payments: { select: { method: true }, take: 1 },
             customer: { select: { name: true } },
             user: { select: { name: true } },
         },
@@ -654,7 +795,7 @@ fastify.get('/api/sales', {
             total: s.total,
             subtotal: s.subtotal,
             tax: s.taxAmount,
-            paymentMethod: s.paymentMethod?.toLowerCase() || 'cash',
+            paymentMethod: s.payments[0]?.method?.toLowerCase() || 'cash',
             status: s.status?.toLowerCase() || 'completed',
             customerName: s.customer?.name || null,
             userName: s.user?.name || 'Sistema',
@@ -842,6 +983,276 @@ fastify.post('/api/sales', {
     }
 })
 
+// ======== RUTAS DE COTIZACIONES ========
+
+// GET all quotes
+fastify.get('/api/quotes', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+    const { status, customerId, page = 1, limit = 50 } = request.query as {
+        status?: string
+        customerId?: string
+        page?: number
+        limit?: number
+    }
+
+    const where: any = {}
+    if (status) where.status = status.toUpperCase()
+    if (customerId) where.customerId = customerId
+
+    const quotes = await prisma.quote.findMany({
+        where,
+        take: Number(limit),
+        skip: (Number(page) - 1) * Number(limit),
+        include: {
+            items: true,
+            customer: { select: { name: true } },
+            user: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+    })
+
+    const total = await prisma.quote.count({ where })
+
+    return {
+        quotes: quotes.map(q => ({
+            id: q.id,
+            folio: q.folio,
+            total: q.total,
+            subtotal: q.subtotal,
+            tax: q.taxAmount,
+            status: q.status.toLowerCase(),
+            customerName: q.customer?.name || 'Sin cliente',
+            userName: q.user?.name || 'Sistema',
+            validUntil: q.validUntil,
+            createdAt: q.createdAt,
+            itemsCount: q.items.length,
+        })),
+        pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            totalPages: Math.ceil(total / Number(limit)),
+        },
+    }
+})
+
+// GET single quote
+fastify.get('/api/quotes/:id', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const quote = await prisma.quote.findUnique({
+        where: { id },
+        include: {
+            items: { include: { product: true } },
+            customer: true,
+            user: { select: { name: true } },
+        },
+    })
+
+    if (!quote) {
+        return reply.code(404).send({ error: 'Cotización no encontrada' })
+    }
+
+    return { quote }
+})
+
+// POST create quote
+fastify.post('/api/quotes', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    const { items, customerId, notes, validUntil } = request.body as {
+        items: Array<{ productId: string; quantity: number; price: number; discount: number }>
+        customerId?: string
+        notes?: string
+        validUntil?: string
+    }
+
+    if (!items || items.length === 0) {
+        return reply.code(400).send({ error: 'La cotización debe tener al menos un producto' })
+    }
+
+    const TAX_RATE = 0.16
+    const subtotal = items.reduce((sum, item) => {
+        const itemTotal = item.price * item.quantity
+        const itemDiscount = itemTotal * (item.discount / 100)
+        return sum + (itemTotal - itemDiscount)
+    }, 0)
+    const taxAmount = subtotal * TAX_RATE
+    const total = subtotal + taxAmount
+
+    // Generate folio
+    const lastQuote = await prisma.quote.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: { folio: true },
+    })
+    const lastNumber = lastQuote ? parseInt(lastQuote.folio.split('-')[1]) : 0
+    const folio = `COT-${String(lastNumber + 1).padStart(5, '0')}`
+
+    // Get product info
+    const productIds = items.map(i => i.productId)
+    const products = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+    })
+    const productMap = new Map(products.map(p => [p.id, p]))
+
+    const quote = await prisma.quote.create({
+        data: {
+            folio,
+            userId: user.id,
+            customerId: customerId || null,
+            subtotal,
+            taxAmount,
+            total,
+            status: 'DRAFT',
+            validUntil: validUntil ? new Date(validUntil) : null,
+            notes: notes || null,
+            items: {
+                create: items.map(item => {
+                    const product = productMap.get(item.productId)!
+                    return {
+                        productId: item.productId,
+                        productName: product.name,
+                        productCode: product.code,
+                        quantity: item.quantity,
+                        unitPrice: item.price,
+                        discount: item.discount,
+                        subtotal: item.price * item.quantity * (1 - item.discount / 100),
+                    }
+                }),
+            },
+        },
+        include: { items: true },
+    })
+
+    return { success: true, quote }
+})
+
+// PUT update quote status
+fastify.put('/api/quotes/:id/status', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { status } = request.body as { status: string }
+
+    const validStatuses = ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'CONVERTED']
+    if (!validStatuses.includes(status.toUpperCase())) {
+        return reply.code(400).send({ error: 'Estado inválido' })
+    }
+
+    const quote = await prisma.quote.update({
+        where: { id },
+        data: { status: status.toUpperCase() },
+    })
+
+    return { success: true, quote }
+})
+
+// POST convert quote to sale
+fastify.post('/api/quotes/:id/convert', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+    const { id } = request.params as { id: string }
+    const { paymentMethod = 'CASH' } = request.body as { paymentMethod?: string }
+
+    const quote = await prisma.quote.findUnique({
+        where: { id },
+        include: { items: true },
+    })
+
+    if (!quote) {
+        return reply.code(404).send({ error: 'Cotización no encontrada' })
+    }
+
+    if (quote.status === 'CONVERTED') {
+        return reply.code(400).send({ error: 'Esta cotización ya fue convertida a venta' })
+    }
+
+    // Generate sale folio
+    const lastSale = await prisma.sale.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: { folio: true },
+    })
+    const lastNumber = lastSale ? parseInt(lastSale.folio.split('-')[1]) : 0
+    const saleFolio = `V-${String(lastNumber + 1).padStart(6, '0')}`
+
+    // Create sale from quote
+    const sale = await prisma.$transaction(async (tx) => {
+        const newSale = await tx.sale.create({
+            data: {
+                folio: saleFolio,
+                userId: user.id,
+                branchId: user.branchId!,
+                customerId: quote.customerId,
+                subtotal: quote.subtotal,
+                taxAmount: quote.taxAmount,
+                total: quote.total,
+                status: 'COMPLETED',
+                notes: `Convertida de cotización ${quote.folio}`,
+                items: {
+                    create: quote.items.map(item => ({
+                        productId: item.productId,
+                        productName: item.productName,
+                        productCode: item.productCode,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        discount: item.discount,
+                        subtotal: item.subtotal,
+                    })),
+                },
+                payments: {
+                    create: {
+                        method: paymentMethod,
+                        amount: quote.total,
+                    },
+                },
+            },
+        })
+
+        // Update stock
+        for (const item of quote.items) {
+            await tx.productStock.updateMany({
+                where: {
+                    productId: item.productId,
+                    branchId: user.branchId!,
+                },
+                data: {
+                    quantity: { decrement: item.quantity },
+                },
+            })
+        }
+
+        // Update quote status
+        await tx.quote.update({
+            where: { id },
+            data: { status: 'CONVERTED', saleId: newSale.id },
+        })
+
+        return newSale
+    })
+
+    await logAction(user.id, 'CONVERT_QUOTE', 'Quote', id, {
+        quoteFolio: quote.folio,
+        saleFolio: sale.folio,
+        total: sale.total,
+    })
+
+    return {
+        success: true,
+        sale: {
+            id: sale.id,
+            folio: sale.folio,
+            total: sale.total,
+        },
+    }
+})
+
 // ======== RUTAS DE CLIENTES ========
 
 fastify.get('/api/customers', {
@@ -986,6 +1397,707 @@ fastify.delete('/api/customers/:id', {
     return { success: true }
 })
 
+// ======== RUTAS DE PROVEEDORES ========
+
+fastify.get('/api/suppliers', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'suppliers:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver proveedores' })
+    }
+
+    const { search } = request.query as { search?: string }
+
+    const suppliers = await prisma.supplier.findMany({
+        where: search
+            ? {
+                OR: [
+                    { name: { contains: search } },
+                    { contactName: { contains: search } },
+                    { email: { contains: search } },
+                    { phone: { contains: search } },
+                ],
+            }
+            : undefined,
+        include: {
+            _count: { select: { purchaseOrders: true } },
+        },
+        orderBy: { name: 'asc' },
+    })
+
+    return suppliers.map((supplier) => ({
+        id: supplier.id,
+        name: supplier.name,
+        contactName: supplier.contactName,
+        email: supplier.email,
+        phone: supplier.phone,
+        address: supplier.address,
+        notes: supplier.notes,
+        totalOrders: supplier._count.purchaseOrders,
+        createdAt: supplier.createdAt,
+        updatedAt: supplier.updatedAt,
+    }))
+})
+
+fastify.post('/api/suppliers', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'suppliers:create')) {
+        return reply.code(403).send({ error: 'No tienes permisos para crear proveedores' })
+    }
+
+    const { name, contactName, email, phone, address, notes } = request.body as {
+        name: string
+        contactName?: string
+        email?: string
+        phone?: string
+        address?: string
+        notes?: string
+    }
+
+    if (!name?.trim()) {
+        return reply.code(400).send({ error: 'El nombre del proveedor es requerido' })
+    }
+
+    const supplier = await prisma.supplier.create({
+        data: {
+            name: name.trim(),
+            contactName: contactName || null,
+            email: email || null,
+            phone: phone || null,
+            address: address || null,
+            notes: notes || null,
+        },
+    })
+
+    await logAction(user.id, 'CREATE_SUPPLIER', 'Supplier', supplier.id, { name: supplier.name })
+
+    return supplier
+})
+
+fastify.put('/api/suppliers/:id', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'suppliers:update')) {
+        return reply.code(403).send({ error: 'No tienes permisos para editar proveedores' })
+    }
+
+    const { id } = request.params as { id: string }
+    const { name, contactName, email, phone, address, notes } = request.body as {
+        name?: string
+        contactName?: string | null
+        email?: string | null
+        phone?: string | null
+        address?: string | null
+        notes?: string | null
+    }
+
+    const supplier = await prisma.supplier.update({
+        where: { id },
+        data: {
+            ...(name !== undefined && { name: name.trim() }),
+            ...(contactName !== undefined && { contactName }),
+            ...(email !== undefined && { email }),
+            ...(phone !== undefined && { phone }),
+            ...(address !== undefined && { address }),
+            ...(notes !== undefined && { notes }),
+        },
+    })
+
+    await logAction(user.id, 'UPDATE_SUPPLIER', 'Supplier', supplier.id, { name: supplier.name })
+
+    return supplier
+})
+
+fastify.delete('/api/suppliers/:id', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'suppliers:delete')) {
+        return reply.code(403).send({ error: 'No tienes permisos para eliminar proveedores' })
+    }
+
+    const { id } = request.params as { id: string }
+
+    const supplierOrders = await prisma.purchaseOrder.count({
+        where: { supplierId: id },
+    })
+    if (supplierOrders > 0) {
+        return reply.code(400).send({
+            error: 'No se puede eliminar un proveedor con órdenes de compra registradas',
+        })
+    }
+
+    await prisma.supplier.delete({
+        where: { id },
+    })
+
+    await logAction(user.id, 'DELETE_SUPPLIER', 'Supplier', id, {})
+
+    return { success: true }
+})
+
+// ======== RUTAS DE COMPRAS ========
+
+fastify.get('/api/purchases', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'purchases:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver compras' })
+    }
+
+    const { status, supplierId, search } = request.query as {
+        status?: string
+        supplierId?: string
+        search?: string
+    }
+
+    const purchases = await prisma.purchaseOrder.findMany({
+        where: {
+            ...(status ? { status } : {}),
+            ...(supplierId ? { supplierId } : {}),
+            ...(search
+                ? {
+                    OR: [
+                        { folio: { contains: search } },
+                        { supplier: { name: { contains: search } } },
+                    ],
+                }
+                : {}),
+        },
+        include: {
+            supplier: true,
+            user: { select: { id: true, name: true } },
+            branch: { select: { id: true, name: true } },
+            items: true,
+        },
+        orderBy: { createdAt: 'desc' },
+    })
+
+    return purchases.map((purchase) => ({
+        id: purchase.id,
+        folio: purchase.folio,
+        status: purchase.status,
+        total: purchase.total,
+        notes: purchase.notes,
+        expectedAt: purchase.expectedAt,
+        receivedAt: purchase.receivedAt,
+        createdAt: purchase.createdAt,
+        supplier: {
+            id: purchase.supplier.id,
+            name: purchase.supplier.name,
+        },
+        branch: purchase.branch,
+        createdBy: purchase.user,
+        itemsCount: purchase.items.length,
+        receivedItems: purchase.items.reduce((sum, item) => sum + item.quantityReceived, 0),
+        orderedItems: purchase.items.reduce((sum, item) => sum + item.quantityOrdered, 0),
+        items: purchase.items,
+    }))
+})
+
+fastify.post('/api/purchases', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'purchases:create')) {
+        return reply.code(403).send({ error: 'No tienes permisos para crear órdenes de compra' })
+    }
+
+    const { supplierId, branchId, expectedAt, notes, items } = (request.body || {}) as {
+        supplierId: string
+        branchId?: string
+        expectedAt?: string
+        notes?: string
+        items: Array<{
+            productId: string
+            quantityOrdered: number
+            unitCost?: number
+        }>
+    }
+
+    if (!supplierId || !items?.length) {
+        return reply.code(400).send({ error: 'Proveedor e items son requeridos' })
+    }
+
+    const effectiveBranchId = branchId || user.branchId
+    if (!effectiveBranchId) {
+        return reply.code(400).send({ error: 'No se encontró sucursal para la orden de compra' })
+    }
+
+    const purchase = await prisma.$transaction(async (tx) => {
+        const supplier = await tx.supplier.findUnique({ where: { id: supplierId } })
+        if (!supplier) {
+            throw new Error('Proveedor no encontrado')
+        }
+
+        const branch = await tx.branch.findUnique({ where: { id: effectiveBranchId } })
+        if (!branch) {
+            throw new Error('Sucursal no encontrada')
+        }
+
+        const productIds = items.map((item) => item.productId)
+        const products = await tx.product.findMany({
+            where: { id: { in: productIds } },
+            select: { id: true, code: true, name: true, cost: true },
+        })
+
+        if (products.length !== productIds.length) {
+            throw new Error('Uno o más productos no existen')
+        }
+
+        const lastPurchaseOrder = await tx.purchaseOrder.findFirst({
+            orderBy: { createdAt: 'desc' },
+            select: { folio: true },
+        })
+        const lastNumber = lastPurchaseOrder ? Number.parseInt(lastPurchaseOrder.folio.split('-')[1], 10) : 0
+        const folio = `PO-${String(lastNumber + 1).padStart(6, '0')}`
+
+        const normalizedItems = items.map((item) => {
+            const product = products.find((candidate) => candidate.id === item.productId)
+            if (!product) {
+                throw new Error('Producto inválido')
+            }
+
+            if (item.quantityOrdered <= 0) {
+                throw new Error(`Cantidad inválida para producto ${product.name}`)
+            }
+
+            const unitCost = item.unitCost ?? product.cost ?? 0
+            const subtotal = unitCost * item.quantityOrdered
+
+            return {
+                productId: product.id,
+                productName: product.name,
+                productCode: product.code,
+                quantityOrdered: item.quantityOrdered,
+                quantityReceived: 0,
+                unitCost,
+                subtotal,
+            }
+        })
+
+        const total = normalizedItems.reduce((sum, item) => sum + item.subtotal, 0)
+
+        return tx.purchaseOrder.create({
+            data: {
+                folio,
+                supplierId: supplier.id,
+                branchId: branch.id,
+                userId: user.id,
+                status: 'OPEN',
+                total,
+                notes: notes || null,
+                expectedAt: expectedAt ? new Date(expectedAt) : null,
+                items: {
+                    create: normalizedItems,
+                },
+            },
+            include: {
+                supplier: true,
+                branch: true,
+                items: true,
+            },
+        })
+    })
+
+    await logAction(user.id, 'CREATE_PURCHASE_ORDER', 'PurchaseOrder', purchase.id, {
+        folio: purchase.folio,
+        supplier: purchase.supplier.name,
+        total: purchase.total,
+    })
+
+    return purchase
+})
+
+fastify.post('/api/purchases/:id/receive', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'purchases:receive')) {
+        return reply.code(403).send({ error: 'No tienes permisos para recibir mercancía' })
+    }
+
+    const { id } = request.params as { id: string }
+    const { items, notes } = (request.body || {}) as {
+        items?: Array<{ itemId: string; quantityReceived: number }>
+        notes?: string
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+        const purchase = await tx.purchaseOrder.findUnique({
+            where: { id },
+            include: { items: true },
+        })
+
+        if (!purchase) {
+            throw new Error('Orden de compra no encontrada')
+        }
+
+        if (purchase.status === 'CANCELLED') {
+            throw new Error('No se puede recibir una orden cancelada')
+        }
+
+        const receiveMap = new Map<string, number>()
+        if (items?.length) {
+            for (const item of items) {
+                receiveMap.set(item.itemId, item.quantityReceived)
+            }
+        }
+
+        for (const item of purchase.items) {
+            const requested = receiveMap.has(item.id)
+                ? receiveMap.get(item.id) ?? 0
+                : item.quantityOrdered - item.quantityReceived
+
+            if (requested <= 0) {
+                continue
+            }
+
+            const pending = item.quantityOrdered - item.quantityReceived
+            const accepted = Math.min(requested, pending)
+
+            if (accepted <= 0) {
+                continue
+            }
+
+            await tx.purchaseOrderItem.update({
+                where: { id: item.id },
+                data: {
+                    quantityReceived: {
+                        increment: accepted,
+                    },
+                },
+            })
+
+            await tx.productStock.upsert({
+                where: {
+                    productId_branchId: {
+                        productId: item.productId,
+                        branchId: purchase.branchId,
+                    },
+                },
+                update: {
+                    quantity: {
+                        increment: accepted,
+                    },
+                },
+                create: {
+                    productId: item.productId,
+                    branchId: purchase.branchId,
+                    quantity: accepted,
+                },
+            })
+        }
+
+        const refreshed = await tx.purchaseOrder.findUnique({
+            where: { id: purchase.id },
+            include: { items: true },
+        })
+
+        if (!refreshed) {
+            throw new Error('Error al refrescar la orden de compra')
+        }
+
+        const ordered = refreshed.items.reduce((sum, item) => sum + item.quantityOrdered, 0)
+        const received = refreshed.items.reduce((sum, item) => sum + item.quantityReceived, 0)
+        const newStatus = received === 0
+            ? 'OPEN'
+            : received < ordered
+                ? 'PARTIAL'
+                : 'RECEIVED'
+
+        return tx.purchaseOrder.update({
+            where: { id: purchase.id },
+            data: {
+                status: newStatus,
+                notes: notes || purchase.notes,
+                receivedAt: newStatus === 'RECEIVED' ? new Date() : null,
+            },
+            include: {
+                supplier: true,
+                branch: true,
+                items: true,
+            },
+        })
+    })
+
+    await logAction(user.id, 'RECEIVE_PURCHASE_ORDER', 'PurchaseOrder', id, {
+        folio: result.folio,
+        status: result.status,
+    })
+
+    return result
+})
+
+fastify.put('/api/purchases/:id/status', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'purchases:update')) {
+        return reply.code(403).send({ error: 'No tienes permisos para actualizar orden de compra' })
+    }
+
+    const { id } = request.params as { id: string }
+    const { status, notes } = (request.body || {}) as { status: string; notes?: string }
+
+    const allowedStatuses = new Set(['OPEN', 'PARTIAL', 'RECEIVED', 'CANCELLED'])
+    if (!allowedStatuses.has(status)) {
+        return reply.code(400).send({ error: 'Estado de orden de compra inválido' })
+    }
+
+    const purchase = await prisma.purchaseOrder.update({
+        where: { id },
+        data: {
+            status,
+            ...(notes !== undefined && { notes }),
+            ...(status === 'RECEIVED' && { receivedAt: new Date() }),
+            ...(status !== 'RECEIVED' && { receivedAt: null }),
+        },
+    })
+
+    await logAction(user.id, 'UPDATE_PURCHASE_ORDER', 'PurchaseOrder', id, {
+        status: purchase.status,
+    })
+
+    return purchase
+})
+
+// ======== RUTAS DE CRM PIPELINE ========
+
+fastify.get('/api/leads', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'leads:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver leads' })
+    }
+
+    const { status, search } = request.query as { status?: string; search?: string }
+    const where = {
+        ...(status ? { status } : {}),
+        ...(search
+            ? {
+                OR: [
+                    { name: { contains: search } },
+                    { company: { contains: search } },
+                    { email: { contains: search } },
+                    { phone: { contains: search } },
+                ],
+            }
+            : {}),
+    }
+
+    const leads = await prisma.lead.findMany({
+        where,
+        include: {
+            assignedTo: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+        orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+    })
+
+    return leads
+})
+
+fastify.get('/api/leads/reminders', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'leads:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver recordatorios' })
+    }
+
+    const { days = 7 } = request.query as { days?: number }
+    const horizon = new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000)
+
+    const reminders = await prisma.lead.findMany({
+        where: {
+            nextFollowUpAt: {
+                not: null,
+                lte: horizon,
+            },
+            status: {
+                notIn: ['WON', 'LOST'],
+            },
+        },
+        include: {
+            assignedTo: {
+                select: {
+                    id: true,
+                    name: true,
+                },
+            },
+        },
+        orderBy: { nextFollowUpAt: 'asc' },
+    })
+
+    return reminders
+})
+
+fastify.post('/api/leads', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'leads:create')) {
+        return reply.code(403).send({ error: 'No tienes permisos para crear leads' })
+    }
+
+    const { name, company, email, phone, source, status, estimatedValue, notes, nextFollowUpAt, assignedToId } = request.body as {
+        name: string
+        company?: string
+        email?: string
+        phone?: string
+        source?: string
+        status?: string
+        estimatedValue?: number
+        notes?: string
+        nextFollowUpAt?: string
+        assignedToId?: string
+    }
+
+    if (!name?.trim()) {
+        return reply.code(400).send({ error: 'El nombre del lead es requerido' })
+    }
+
+    const allowedStatuses = new Set(['NEW', 'CONTACTED', 'NEGOTIATION', 'WON', 'LOST'])
+    const safeStatus = status && allowedStatuses.has(status) ? status : 'NEW'
+
+    const lead = await prisma.lead.create({
+        data: {
+            name: name.trim(),
+            company: company || null,
+            email: email || null,
+            phone: phone || null,
+            source: source || null,
+            status: safeStatus,
+            estimatedValue: estimatedValue ?? null,
+            notes: notes || null,
+            nextFollowUpAt: nextFollowUpAt ? new Date(nextFollowUpAt) : null,
+            assignedToId: assignedToId || user.id,
+        },
+        include: {
+            assignedTo: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+    })
+
+    await logAction(user.id, 'CREATE_LEAD', 'Lead', lead.id, {
+        name: lead.name,
+        status: lead.status,
+    })
+
+    return lead
+})
+
+fastify.put('/api/leads/:id', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'leads:update')) {
+        return reply.code(403).send({ error: 'No tienes permisos para editar leads' })
+    }
+
+    const { id } = request.params as { id: string }
+    const { name, company, email, phone, source, status, estimatedValue, notes, nextFollowUpAt, assignedToId } = request.body as {
+        name?: string
+        company?: string | null
+        email?: string | null
+        phone?: string | null
+        source?: string | null
+        status?: string
+        estimatedValue?: number | null
+        notes?: string | null
+        nextFollowUpAt?: string | null
+        assignedToId?: string | null
+    }
+
+    if (status) {
+        const allowedStatuses = new Set(['NEW', 'CONTACTED', 'NEGOTIATION', 'WON', 'LOST'])
+        if (!allowedStatuses.has(status)) {
+            return reply.code(400).send({ error: 'Estado de lead inválido' })
+        }
+    }
+
+    const lead = await prisma.lead.update({
+        where: { id },
+        data: {
+            ...(name !== undefined && { name: name.trim() }),
+            ...(company !== undefined && { company }),
+            ...(email !== undefined && { email }),
+            ...(phone !== undefined && { phone }),
+            ...(source !== undefined && { source }),
+            ...(status !== undefined && { status }),
+            ...(estimatedValue !== undefined && { estimatedValue }),
+            ...(notes !== undefined && { notes }),
+            ...(nextFollowUpAt !== undefined && {
+                nextFollowUpAt: nextFollowUpAt ? new Date(nextFollowUpAt) : null,
+            }),
+            ...(assignedToId !== undefined && { assignedToId }),
+        },
+        include: {
+            assignedTo: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+    })
+
+    await logAction(user.id, 'UPDATE_LEAD', 'Lead', lead.id, {
+        status: lead.status,
+    })
+
+    return lead
+})
+
+fastify.delete('/api/leads/:id', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'leads:delete')) {
+        return reply.code(403).send({ error: 'No tienes permisos para eliminar leads' })
+    }
+
+    const { id } = request.params as { id: string }
+    await prisma.lead.delete({
+        where: { id },
+    })
+
+    await logAction(user.id, 'DELETE_LEAD', 'Lead', id, {})
+
+    return { success: true }
+})
+
 // ======== RUTAS DE GASTOS ========
 
 fastify.get('/api/expenses', {
@@ -1065,7 +2177,15 @@ fastify.delete('/api/expenses/:id', {
 
 // ======== RUTAS DE CATEGORÍAS DE GASTOS ========
 
-fastify.get('/api/expense-categories', async () => {
+fastify.get('/api/expense-categories', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'expenses:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver categorias de gastos' })
+    }
+
     const categories = await prisma.expenseCategory.findMany({
         orderBy: { name: 'asc' },
     })
@@ -1242,7 +2362,15 @@ fastify.delete('/api/employees/:id', {
 
 // ======== RUTAS DE CATEGORÍAS ========
 
-fastify.get('/api/categories', async () => {
+fastify.get('/api/categories', {
+    preHandler: [fastify.authenticate as any],
+}, async (request, reply) => {
+    const user = request.user as UserPayload
+
+    if (!hasPermission(user.role, 'products:read')) {
+        return reply.code(403).send({ error: 'No tienes permisos para ver categorias de productos' })
+    }
+
     const categories = await prisma.category.findMany({
         orderBy: { name: 'asc' },
     })
@@ -1265,8 +2393,8 @@ const start = async () => {
     try {
         await registerPlugins()
 
-        const host = '0.0.0.0'
-        const port = parseInt(process.env.PORT || '3001')
+        const host = process.env.API_HOST || '127.0.0.1'
+        const port = Number.parseInt(process.env.PORT || '3001', 10)
 
         await fastify.listen({ port, host })
         console.log(`\n🚀 Servidor Saori iniciado en http://localhost:${port}`)

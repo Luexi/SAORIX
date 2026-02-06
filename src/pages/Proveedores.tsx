@@ -1,391 +1,341 @@
-import { useState, useEffect } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { useAuthFetch } from '@/stores/authStore'
 
-interface Proveedor {
+interface Supplier {
     id: string
     name: string
-    rfc?: string
-    phone?: string
-    email?: string
-    address?: string
-    contactPerson?: string
-    notes?: string
-    active: boolean
+    contactName: string | null
+    email: string | null
+    phone: string | null
+    address: string | null
+    notes: string | null
+    totalOrders: number
     createdAt: string
+}
+
+interface SupplierForm {
+    name: string
+    contactName: string
+    email: string
+    phone: string
+    address: string
+    notes: string
+}
+
+const emptyForm: SupplierForm = {
+    name: '',
+    contactName: '',
+    email: '',
+    phone: '',
+    address: '',
+    notes: '',
 }
 
 export default function Proveedores() {
     const authFetch = useAuthFetch()
-    const [proveedores, setProveedores] = useState<Proveedor[]>([])
+    const [suppliers, setSuppliers] = useState<Supplier[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [search, setSearch] = useState('')
-    const [showModal, setShowModal] = useState(false)
-    const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null)
-
-    // Form state
-    const [form, setForm] = useState({
-        name: '',
-        rfc: '',
-        phone: '',
-        email: '',
-        address: '',
-        contactPerson: '',
-        notes: '',
-    })
+    const [showForm, setShowForm] = useState(false)
+    const [saving, setSaving] = useState(false)
+    const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+    const [form, setForm] = useState<SupplierForm>(emptyForm)
 
     useEffect(() => {
-        fetchProveedores()
+        void fetchSuppliers()
     }, [])
 
-    const fetchProveedores = async () => {
+    async function fetchSuppliers() {
+        setLoading(true)
+        setError('')
         try {
-            setLoading(true)
-            const response = await authFetch('/api/providers')
-            if (response.ok) {
-                const data = await response.json()
-                setProveedores(data)
-            } else {
-                // API no existe aún, usar mock data
-                setProveedores([
-                    {
-                        id: '1',
-                        name: 'Distribuidora ABC',
-                        rfc: 'DAB123456XYZ',
-                        phone: '555-1234567',
-                        email: 'ventas@distribuidoraabc.com',
-                        address: 'Av. Industrial 123, CDMX',
-                        contactPerson: 'Juan Pérez',
-                        notes: 'Proveedor principal de electrónicos',
-                        active: true,
-                        createdAt: new Date().toISOString(),
-                    },
-                    {
-                        id: '2',
-                        name: 'Mayorista Tech',
-                        rfc: 'MTE987654ABC',
-                        phone: '555-7654321',
-                        email: 'compras@mayoristatech.com',
-                        address: 'Blvd. Tecnología 456, GDL',
-                        contactPerson: 'María López',
-                        notes: '',
-                        active: true,
-                        createdAt: new Date().toISOString(),
-                    },
-                ])
+            const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''
+            const response = await authFetch(`/suppliers${query}`)
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}))
+                throw new Error(data.error || 'No se pudo cargar proveedores')
             }
-        } catch (err) {
-            setError('Error de conexión')
+            const data = await response.json()
+            setSuppliers(data)
+        } catch (requestError) {
+            const message = requestError instanceof Error ? requestError.message : 'Error de conexión'
+            setError(message)
         } finally {
             setLoading(false)
         }
     }
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
+    function openCreateForm() {
+        setEditingSupplier(null)
+        setForm(emptyForm)
+        setShowForm(true)
+    }
 
+    function openEditForm(supplier: Supplier) {
+        setEditingSupplier(supplier)
+        setForm({
+            name: supplier.name,
+            contactName: supplier.contactName ?? '',
+            email: supplier.email ?? '',
+            phone: supplier.phone ?? '',
+            address: supplier.address ?? '',
+            notes: supplier.notes ?? '',
+        })
+        setShowForm(true)
+    }
+
+    async function submitSupplier(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault()
+        if (!form.name.trim()) {
+            setError('El nombre del proveedor es requerido')
+            return
+        }
+
+        setSaving(true)
+        setError('')
         try {
-            const url = editingProveedor
-                ? `/api/providers/${editingProveedor.id}`
-                : '/api/providers'
-            const method = editingProveedor ? 'PUT' : 'POST'
-
-            const response = await authFetch(url, {
+            const endpoint = editingSupplier ? `/suppliers/${editingSupplier.id}` : '/suppliers'
+            const method = editingSupplier ? 'PUT' : 'POST'
+            const response = await authFetch(endpoint, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(form),
+                body: JSON.stringify({
+                    name: form.name.trim(),
+                    contactName: form.contactName || null,
+                    email: form.email || null,
+                    phone: form.phone || null,
+                    address: form.address || null,
+                    notes: form.notes || null,
+                }),
             })
 
-            if (response.ok) {
-                fetchProveedores()
-                resetForm()
-            } else {
-                // Mock success para demo
-                const newProveedor: Proveedor = {
-                    id: editingProveedor?.id || Date.now().toString(),
-                    ...form,
-                    active: true,
-                    createdAt: editingProveedor?.createdAt || new Date().toISOString(),
-                }
-
-                if (editingProveedor) {
-                    setProveedores(proveedores.map((p) => (p.id === editingProveedor.id ? newProveedor : p)))
-                } else {
-                    setProveedores([...proveedores, newProveedor])
-                }
-                resetForm()
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}))
+                throw new Error(data.error || 'No se pudo guardar proveedor')
             }
-        } catch (err) {
-            setError('Error al guardar proveedor')
+
+            setShowForm(false)
+            setForm(emptyForm)
+            setEditingSupplier(null)
+            await fetchSuppliers()
+        } catch (requestError) {
+            const message = requestError instanceof Error ? requestError.message : 'Error al guardar'
+            setError(message)
+        } finally {
+            setSaving(false)
         }
     }
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('¿Estás seguro de eliminar este proveedor?')) return
-
+    async function deleteSupplier(id: string) {
+        if (!confirm('¿Eliminar proveedor? Esta acción no se puede deshacer.')) return
+        setError('')
         try {
-            const response = await authFetch(`/api/providers/${id}`, { method: 'DELETE' })
-            if (response.ok) {
-                fetchProveedores()
-            } else {
-                // Mock delete
-                setProveedores(proveedores.filter((p) => p.id !== id))
+            const response = await authFetch(`/suppliers/${id}`, { method: 'DELETE' })
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}))
+                throw new Error(data.error || 'No se pudo eliminar proveedor')
             }
-        } catch (err) {
-            setError('Error al eliminar proveedor')
+            await fetchSuppliers()
+        } catch (requestError) {
+            const message = requestError instanceof Error ? requestError.message : 'Error al eliminar'
+            setError(message)
         }
-    }
-
-    const handleEdit = (proveedor: Proveedor) => {
-        setEditingProveedor(proveedor)
-        setForm({
-            name: proveedor.name,
-            rfc: proveedor.rfc || '',
-            phone: proveedor.phone || '',
-            email: proveedor.email || '',
-            address: proveedor.address || '',
-            contactPerson: proveedor.contactPerson || '',
-            notes: proveedor.notes || '',
-        })
-        setShowModal(true)
-    }
-
-    const resetForm = () => {
-        setForm({ name: '', rfc: '', phone: '', email: '', address: '', contactPerson: '', notes: '' })
-        setEditingProveedor(null)
-        setShowModal(false)
-    }
-
-    const filteredProveedores = proveedores.filter(
-        (p) =>
-            p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.rfc?.toLowerCase().includes(search.toLowerCase()) ||
-            p.email?.toLowerCase().includes(search.toLowerCase())
-    )
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-        )
     }
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-text-primary-light dark:text-white">
-                        Proveedores
-                    </h1>
+                    <h1 className="text-2xl font-bold text-text-primary-light dark:text-white">Proveedores</h1>
                     <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                        Gestiona tus proveedores y contactos
+                        Catálogo oficial de proveedores para compras
                     </p>
                 </div>
                 <button
-                    onClick={() => setShowModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+                    onClick={openCreateForm}
+                    className="px-4 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
                 >
-                    <span className="material-symbols-outlined text-[20px]">add</span>
-                    Nuevo Proveedor
+                    Nuevo proveedor
                 </button>
             </div>
 
-            {/* Search */}
-            <div className="relative max-w-md">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-text-secondary-light">
-                    <span className="material-symbols-outlined text-[20px]">search</span>
-                </span>
-                <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar por nombre, RFC o email..."
-                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border-0 bg-surface-light dark:bg-surface-dark ring-1 ring-gray-200 dark:ring-gray-700 placeholder:text-gray-400 focus:ring-2 focus:ring-primary"
-                />
+            <div className="bg-surface-light dark:bg-surface-dark rounded-2xl p-4 border border-gray-100 dark:border-gray-800">
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Buscar por nombre, contacto, email o teléfono"
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                    />
+                    <button
+                        onClick={() => void fetchSuppliers()}
+                        className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                    >
+                        Buscar
+                    </button>
+                </div>
             </div>
 
             {error && (
-                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-lg">
+                <div className="rounded-xl p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 text-sm">
                     {error}
                 </div>
             )}
 
-            {/* Proveedores Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredProveedores.map((proveedor) => (
-                    <div
-                        key={proveedor.id}
-                        className="bg-surface-light dark:bg-surface-dark rounded-xl p-5 border border-gray-100 dark:border-gray-800 hover:border-primary transition-colors"
-                    >
-                        <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="size-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
-                                    {proveedor.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-text-primary-light dark:text-white">
-                                        {proveedor.name}
-                                    </h3>
-                                    {proveedor.rfc && (
-                                        <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                                            RFC: {proveedor.rfc}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="flex gap-1">
-                                <button
-                                    onClick={() => handleEdit(proveedor)}
-                                    className="p-1.5 text-text-secondary-light hover:text-primary transition-colors"
-                                >
-                                    <span className="material-symbols-outlined text-[18px]">edit</span>
-                                </button>
-                                <button
-                                    onClick={() => handleDelete(proveedor.id)}
-                                    className="p-1.5 text-text-secondary-light hover:text-red-500 transition-colors"
-                                >
-                                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2 text-sm">
-                            {proveedor.contactPerson && (
-                                <div className="flex items-center gap-2 text-text-secondary-light dark:text-text-secondary-dark">
-                                    <span className="material-symbols-outlined text-[16px]">person</span>
-                                    {proveedor.contactPerson}
-                                </div>
-                            )}
-                            {proveedor.phone && (
-                                <div className="flex items-center gap-2 text-text-secondary-light dark:text-text-secondary-dark">
-                                    <span className="material-symbols-outlined text-[16px]">phone</span>
-                                    {proveedor.phone}
-                                </div>
-                            )}
-                            {proveedor.email && (
-                                <div className="flex items-center gap-2 text-text-secondary-light dark:text-text-secondary-dark">
-                                    <span className="material-symbols-outlined text-[16px]">email</span>
-                                    {proveedor.email}
-                                </div>
-                            )}
-                            {proveedor.address && (
-                                <div className="flex items-center gap-2 text-text-secondary-light dark:text-text-secondary-dark">
-                                    <span className="material-symbols-outlined text-[16px]">location_on</span>
-                                    <span className="line-clamp-1">{proveedor.address}</span>
-                                </div>
-                            )}
-                        </div>
+            {loading ? (
+                <div className="bg-surface-light dark:bg-surface-dark rounded-2xl p-8 text-center text-text-secondary-light dark:text-text-secondary-dark">
+                    Cargando proveedores...
+                </div>
+            ) : suppliers.length === 0 ? (
+                <div className="bg-surface-light dark:bg-surface-dark rounded-2xl p-8 text-center text-text-secondary-light dark:text-text-secondary-dark">
+                    No hay proveedores registrados
+                </div>
+            ) : (
+                <div className="bg-surface-light dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-800/50">
+                                <tr>
+                                    <th className="text-left px-4 py-3 font-semibold">Proveedor</th>
+                                    <th className="text-left px-4 py-3 font-semibold">Contacto</th>
+                                    <th className="text-left px-4 py-3 font-semibold">Órdenes</th>
+                                    <th className="text-left px-4 py-3 font-semibold">Alta</th>
+                                    <th className="text-right px-4 py-3 font-semibold">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {suppliers.map((supplier) => (
+                                    <tr key={supplier.id} className="border-t border-gray-100 dark:border-gray-800">
+                                        <td className="px-4 py-3">
+                                            <div className="font-medium text-text-primary-light dark:text-white">
+                                                {supplier.name}
+                                            </div>
+                                            {supplier.address && (
+                                                <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                                                    {supplier.address}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div>{supplier.contactName || '-'}</div>
+                                            <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                                                {supplier.email || supplier.phone || '-'}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">{supplier.totalOrders}</td>
+                                        <td className="px-4 py-3">
+                                            {new Date(supplier.createdAt).toLocaleDateString('es-MX')}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={() => openEditForm(supplier)}
+                                                    className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900"
+                                                >
+                                                    Editar
+                                                </button>
+                                                <button
+                                                    onClick={() => void deleteSupplier(supplier.id)}
+                                                    className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-700 dark:hover:bg-red-900/20"
+                                                >
+                                                    Eliminar
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                ))}
-            </div>
-
-            {filteredProveedores.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <span className="material-symbols-outlined text-[48px] text-gray-300 dark:text-gray-600 mb-4">
-                        local_shipping
-                    </span>
-                    <p className="text-text-secondary-light dark:text-text-secondary-dark">
-                        No se encontraron proveedores
-                    </p>
                 </div>
             )}
 
-            {/* Modal */}
-            {showModal && (
+            {showForm && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-surface-light dark:bg-surface-dark rounded-2xl shadow-2xl w-full max-w-lg">
-                        <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
-                            <h2 className="text-xl font-bold text-text-primary-light dark:text-white">
-                                {editingProveedor ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+                    <div className="w-full max-w-xl bg-surface-light dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800">
+                        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                            <h2 className="text-lg font-semibold text-text-primary-light dark:text-white">
+                                {editingSupplier ? 'Editar proveedor' : 'Nuevo proveedor'}
                             </h2>
-                            <button onClick={resetForm} className="text-text-secondary-light hover:text-text-primary-light">
-                                <span className="material-symbols-outlined">close</span>
+                            <button
+                                onClick={() => setShowForm(false)}
+                                className="text-text-secondary-light dark:text-text-secondary-dark"
+                            >
+                                Cerrar
                             </button>
                         </div>
-
-                        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-sm font-medium mb-1.5">Nombre *</label>
+                        <form onSubmit={submitSupplier} className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-sm mb-1">Nombre *</label>
+                                <input
+                                    value={form.name}
+                                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                                    required
+                                />
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm mb-1">Contacto</label>
                                     <input
-                                        type="text"
-                                        value={form.name}
-                                        onChange={(e) => setForm({ ...form, name: e.target.value })}
-                                        required
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary"
+                                        value={form.contactName}
+                                        onChange={(event) => setForm({ ...form, contactName: event.target.value })}
+                                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5">RFC</label>
+                                    <label className="block text-sm mb-1">Teléfono</label>
                                     <input
-                                        type="text"
-                                        value={form.rfc}
-                                        onChange={(e) => setForm({ ...form, rfc: e.target.value })}
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1.5">Teléfono</label>
-                                    <input
-                                        type="tel"
                                         value={form.phone}
-                                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1.5">Email</label>
-                                    <input
-                                        type="email"
-                                        value={form.email}
-                                        onChange={(e) => setForm({ ...form, email: e.target.value })}
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1.5">Contacto</label>
-                                    <input
-                                        type="text"
-                                        value={form.contactPerson}
-                                        onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="block text-sm font-medium mb-1.5">Dirección</label>
-                                    <input
-                                        type="text"
-                                        value={form.address}
-                                        onChange={(e) => setForm({ ...form, address: e.target.value })}
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="block text-sm font-medium mb-1.5">Notas</label>
-                                    <textarea
-                                        value={form.notes}
-                                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                                        rows={2}
-                                        className="w-full px-4 py-2.5 text-sm rounded-lg border-0 bg-gray-100 dark:bg-gray-800 focus:ring-2 focus:ring-primary resize-none"
+                                        onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
                                     />
                                 </div>
                             </div>
-
-                            <div className="flex gap-3 pt-4">
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm mb-1">Email</label>
+                                    <input
+                                        type="email"
+                                        value={form.email}
+                                        onChange={(event) => setForm({ ...form, email: event.target.value })}
+                                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm mb-1">Dirección</label>
+                                    <input
+                                        value={form.address}
+                                        onChange={(event) => setForm({ ...form, address: event.target.value })}
+                                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm mb-1">Notas</label>
+                                <textarea
+                                    rows={3}
+                                    value={form.notes}
+                                    onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2">
                                 <button
                                     type="button"
-                                    onClick={resetForm}
-                                    className="flex-1 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-text-secondary-light hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                    onClick={() => setShowForm(false)}
+                                    className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-2.5 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+                                    disabled={saving}
+                                    className="px-4 py-2.5 rounded-xl bg-primary text-white font-medium disabled:opacity-50"
                                 >
-                                    {editingProveedor ? 'Guardar Cambios' : 'Crear Proveedor'}
+                                    {saving ? 'Guardando...' : editingSupplier ? 'Actualizar' : 'Crear proveedor'}
                                 </button>
                             </div>
                         </form>

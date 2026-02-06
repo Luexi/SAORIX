@@ -1,235 +1,108 @@
-# 🏪 Saori ERP
+# SAORIX ERP
 
-Sistema ERP de escritorio para gestión de negocios pequeños y medianos.
+ERP/CRM/POS de escritorio para PyMEs, construido con Electron + React + Fastify + Prisma.
 
----
+## Estado actual
 
-## 📋 Resumen del Proyecto
+- Objetivo activo: `Beta interna Windows`.
+- Alcance `v1` activo:
+  - Compras (ordenes y recepcion con stock automatico)
+  - CRM Pipeline (leads y recordatorios)
+  - Cotizaciones, POS, inventario, clientes, finanzas, personal y reportes
+  - Asistente de primer usuario cuando la DB no tiene usuarios
 
-**Saori ERP** es una aplicación de escritorio multiplataforma construida con Electron + React + TypeScript. Ofrece módulos completos para punto de venta, inventario, clientes, finanzas y recursos humanos.
+## Stack
 
-### Características Principales
+- Frontend: React 18 + TypeScript + TailwindCSS + Zustand
+- Backend embebido: Fastify + JWT + Prisma
+- DB: SQLite
+- Desktop: Electron
+- Build: Vite + esbuild + electron-builder
 
-| Módulo | Funcionalidad |
-|--------|--------------|
-| **Dashboard** | Métricas en tiempo real, gráficas de ventas |
-| **POS** | Punto de venta con carrito, métodos de pago, selección cliente |
-| **Inventario** | CRUD productos, control de stock, alertas bajo stock |
-| **Clientes (CRM)** | Gestión clientes, tags, historial compras |
-| **Finanzas** | Registro gastos, gráficas ingresos vs gastos |
-| **Personal (RH)** | Empleados, puestos, nómina, horarios |
-| **Logs** | Auditoría de acciones (solo Admin) |
+## Arquitectura resumida
 
----
+- Renderer React consume API local.
+- API Fastify corre embebida dentro de Electron.
+- API escucha en `127.0.0.1:3001` para seguridad local-first.
+- Prisma usa `DATABASE_URL` y en produccion persiste DB en `userData`.
+- En instalador, si no existe DB en `userData`, se copia una DB plantilla migrada desde recursos empaquetados.
+- Login requiere backend real (sin fallback mock).
+- Setup inicial disponible en API: `GET /api/setup/status`, `POST /api/setup/first-user`.
 
-## 🏗️ Arquitectura
+## Configuracion de entorno
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    ELECTRON (Main)                       │
-│  ┌─────────────────┐    ┌──────────────────────────┐    │
-│  │   Fastify API   │◄───│   Prisma ORM (SQLite)    │    │
-│  │   localhost:3000│    │   saori.db               │    │
-│  └────────┬────────┘    └──────────────────────────┘    │
-│           │                                              │
-├───────────┼──────────────────────────────────────────────┤
-│           ▼                                              │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │              REACT (Renderer)                    │    │
-│  │   ┌──────────┐  ┌──────────┐  ┌──────────┐      │    │
-│  │   │  Zustand │  │  Router  │  │ Recharts │      │    │
-│  │   │  (State) │  │  (Nav)   │  │ (Charts) │      │    │
-│  │   └──────────┘  └──────────┘  └──────────┘      │    │
-│  └─────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
+Crear `.env` a partir de `.env.example`:
+
+```env
+JWT_SECRET=replace-with-64-char-random-secret
+PORT=3001
+API_HOST=127.0.0.1
+DATABASE_URL="file:./prisma/saori.db"
 ```
 
-### Patrón de Comunicación
+Notas:
+- En produccion Electron, `JWT_SECRET` y `DATABASE_URL` se resuelven automaticamente en runtime si no existen.
+- No subir `.env` a control de versiones.
 
-```
-Browser (React) ──HTTP──► Fastify API ──Prisma──► SQLite
-```
-
----
-
-## 🛠️ Stack Tecnológico
-
-### Frontend
-| Tecnología | Versión | Uso |
-|------------|---------|-----|
-| React | 18.3 | UI Components |
-| TypeScript | 5.6 | Type Safety |
-| Tailwind CSS | 3.4 | Estilos |
-| React Router | 6.x | Navegación |
-| Zustand | 5.x | Estado Global |
-| Recharts | 2.x | Gráficas |
-
-### Backend
-| Tecnología | Versión | Uso |
-|------------|---------|-----|
-| Electron | 33.x | App Desktop |
-| Fastify | 5.x | API REST |
-| Prisma | 5.22 | ORM |
-| SQLite | - | Base de Datos |
-| JWT (fastify-jwt) | - | Autenticación |
-| bcryptjs | - | Hash Passwords |
-
-### Herramientas
-| Herramienta | Uso |
-|-------------|-----|
-| Vite | Bundler/Dev Server |
-| electron-builder | Empaquetado |
-| Prisma CLI | Migraciones |
-
----
-
-## 📁 Estructura del Proyecto
-
-```
-Saori/
-├── electron/                 # Proceso principal Electron
-│   ├── main.ts              # Entry point Electron
-│   └── server/
-│       └── index.ts         # API Fastify (~1000 líneas)
-│
-├── src/                     # Frontend React
-│   ├── App.tsx              # Router principal
-│   ├── main.tsx             # Entry point React
-│   ├── components/
-│   │   └── layout/
-│   │       ├── Layout.tsx   # Layout principal
-│   │       ├── Sidebar.tsx  # Navegación lateral
-│   │       └── Header.tsx   # Barra superior
-│   ├── pages/
-│   │   ├── Dashboard.tsx
-│   │   ├── POS.tsx
-│   │   ├── Inventario.tsx
-│   │   ├── Clientes.tsx
-│   │   ├── Finanzas.tsx
-│   │   ├── Personal.tsx
-│   │   ├── Logs.tsx
-│   │   └── Login.tsx
-│   ├── stores/
-│   │   ├── authStore.ts     # Estado autenticación
-│   │   └── cartStore.ts     # Estado carrito POS
-│   └── styles/
-│       └── index.css        # Tailwind + Custom
-│
-├── prisma/
-│   ├── schema.prisma        # 18 modelos de BD
-│   ├── seed.ts              # Datos iniciales
-│   └── migrations/          # Historial migraciones
-│
-├── package.json
-├── tailwind.config.js
-├── vite.config.ts
-└── tsconfig.json
-```
-
----
-
-## 💾 Modelos de Base de Datos
-
-```
-Usuarios:     User
-Sucursales:   Branch
-Productos:    Product, Category, ProductStock
-Clientes:     Customer
-Ventas:       Sale, SaleItem
-Finanzas:     Expense, ExpenseCategory
-Personal:     Employee, Position, Payroll, Schedule
-Proveedores:  Supplier, PurchaseOrder
-Auditoría:    ActivityLog
-Caja:         CashRegister
-```
-
----
-
-## 📊 API Endpoints
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/api/auth/login` | Login |
-| POST | `/api/auth/refresh` | Refresh token |
-| GET | `/api/auth/me` | Perfil usuario |
-| GET/POST | `/api/products` | Productos |
-| PUT/DELETE | `/api/products/:id` | CRUD producto |
-| GET/POST | `/api/customers` | Clientes |
-| PUT/DELETE | `/api/customers/:id` | CRUD cliente |
-| POST | `/api/sales` | Crear venta |
-| GET/POST | `/api/expenses` | Gastos |
-| DELETE | `/api/expenses/:id` | Eliminar gasto |
-| GET/POST | `/api/employees` | Empleados |
-| PUT/DELETE | `/api/employees/:id` | CRUD empleado |
-| GET | `/api/positions` | Puestos |
-| GET | `/api/logs` | Logs (Admin) |
-
----
-
-## 📏 Tamaño Estimado
-
-### Código Fuente
-- **35 archivos** de código (~540 KB sin node_modules)
-
-### Ejecutable Compilado (Estimado)
-| Plataforma | Tamaño Aproximado |
-|------------|-------------------|
-| Windows (.exe) | 80-120 MB |
-| macOS (.dmg) | 90-130 MB |
-| Linux (.AppImage) | 85-125 MB |
-
-> El tamaño incluye Chromium (~70MB), Node.js runtime, y dependencias.
-
----
-
-## 👤 Usuarios Demo
-
-| Email | Contraseña | Rol |
-|-------|------------|-----|
-| admin@saori.local | admin123 | Administrador |
-| empleado@saori.local | empleado123 | Vendedor |
-
----
-
-## 🚀 Comandos
+## Comandos
 
 ```bash
-# Desarrollo
+# Desarrollo web
 npm run dev
 
-# Build producción
-npm run build
+# Compilar proceso Electron (main/preload/server)
+npm run electron:compile
 
-# Generar ejecutable
+# Generar DB plantilla para instalador
+npm run prepare:db-template
+
+# Tests unitarios
+npm test
+
+# Smoke E2E de flujos criticos
+npm run test:e2e
+
+# Build frontend
+npx vite build
+
+# Build desktop (instalador)
 npm run electron:build
 ```
 
----
+## Manual de usuario
 
-## 🔄 Migración Futura
+- Ver `MANUAL_USUARIO.md` para instalacion, primer acceso, operacion diaria, respaldos y troubleshooting.
 
-El proyecto está preparado para migrar de SQLite a **Supabase/PostgreSQL**:
+## Base de datos y migraciones
 
-```prisma
-// Cambiar en schema.prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+```bash
+# Aplicar migraciones en desarrollo
+npx prisma migrate dev
+
+# Generar cliente Prisma
+npx prisma generate
+
+# Seed de datos demo
+npm run prisma:seed
 ```
 
----
+Migraciones recientes:
+- `add_procurement_crm_v1`
+- `align_expense_user_and_optional_category`
 
-## 📝 Licencia
+## Usuarios demo
 
-Este proyecto está licenciado bajo la [Licencia MIT](LICENSE).
+- `admin@saori.local` / `admin123`
+- `empleado@saori.local` / `empleado123`
 
-Copyright (c) 2026 Luis Angel Gonzalez Gonzalez
+## Endpoints nuevos v1
 
----
+- Proveedores: `/api/suppliers`
+- Compras: `/api/purchases`, `/api/purchases/:id/receive`
+- CRM Leads: `/api/leads`, `/api/leads/reminders`
 
-## 👤 Autor
+## Pendiente antes de release beta formal
 
-**Luis Angel Gonzalez Gonzalez**
-- Email: luexigonzalez@gmail.com
-- GitHub: [@Luexi](https://github.com/Luexi)
+- QA manual por rol
+- Instalador Windows firmado para distribucion interna
+- Exportacion PDF formal de cotizaciones

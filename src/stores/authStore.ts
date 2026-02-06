@@ -1,7 +1,8 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useCallback } from 'react'
+import { API_URL } from '@/lib/api'
 
-// Tipos
 export interface User {
     id: string
     email: string
@@ -19,19 +20,13 @@ interface AuthState {
     isAuthenticated: boolean
     isLoading: boolean
     error: string | null
-
-    // Actions
     login: (email: string, password: string) => Promise<boolean>
     logout: () => void
     refreshAuth: () => Promise<boolean>
     clearError: () => void
-
-    // Permission helpers
     hasPermission: (permission: string) => boolean
     isAdmin: () => boolean
 }
-
-const API_URL = 'http://localhost:3001/api'
 
 export const useAuthStore = create<AuthState>()(
     persist(
@@ -56,7 +51,7 @@ export const useAuthStore = create<AuthState>()(
                     const data = await response.json()
 
                     if (!response.ok) {
-                        set({ error: data.error || 'Error de autenticación', isLoading: false })
+                        set({ error: data.error || 'Error de autenticacion', isLoading: false })
                         return false
                     }
 
@@ -70,57 +65,10 @@ export const useAuthStore = create<AuthState>()(
                     })
 
                     return true
-                } catch (error) {
-                    // Fallback para desarrollo sin backend
-                    console.warn('Backend no disponible, usando modo demo')
-
-                    // Mock login para desarrollo
-                    if (email === 'admin@saori.local' && password === 'admin123') {
-                        set({
-                            user: {
-                                id: 'admin-1',
-                                email: 'admin@saori.local',
-                                name: 'Carlos Admin',
-                                role: 'ADMIN',
-                                branchId: 'main-branch',
-                                branchName: 'Sucursal Principal',
-                                permissions: [
-                                    'sales:create', 'sales:read', 'sales:delete',
-                                    'products:create', 'products:read', 'products:update', 'products:delete',
-                                    'users:create', 'users:read', 'users:update', 'users:delete',
-                                    'logs:read', 'reports:read',
-                                ],
-                            },
-                            token: 'mock-token-admin',
-                            refreshToken: 'mock-refresh-admin',
-                            isAuthenticated: true,
-                            isLoading: false,
-                            error: null,
-                        })
-                        return true
-                    } else if (email === 'empleado@saori.local' && password === 'empleado123') {
-                        set({
-                            user: {
-                                id: 'empleado-1',
-                                email: 'empleado@saori.local',
-                                name: 'María Vendedora',
-                                role: 'VENDEDOR',
-                                branchId: 'main-branch',
-                                branchName: 'Sucursal Principal',
-                                permissions: ['sales:create', 'sales:read', 'products:read'],
-                            },
-                            token: 'mock-token-empleado',
-                            refreshToken: 'mock-refresh-empleado',
-                            isAuthenticated: true,
-                            isLoading: false,
-                            error: null,
-                        })
-                        return true
-                    }
-
+                } catch {
                     set({
-                        error: 'Credenciales incorrectas',
-                        isLoading: false
+                        error: 'No se pudo conectar al servidor local. Verifica que la app este inicializada correctamente.',
+                        isLoading: false,
                     })
                     return false
                 }
@@ -162,7 +110,6 @@ export const useAuthStore = create<AuthState>()(
 
             clearError: () => set({ error: null }),
 
-            // Permission helpers
             hasPermission: (permission: string) => {
                 const { user } = get()
                 return user?.permissions?.includes(permission) ?? false
@@ -185,27 +132,33 @@ export const useAuthStore = create<AuthState>()(
     )
 )
 
-// Hook helper para fetch autenticado
 export function useAuthFetch() {
     const { token, refreshAuth, logout } = useAuthStore()
 
-    return async (url: string, options: RequestInit = {}) => {
+    return useCallback(async (url: string, options: RequestInit = {}) => {
         const headers = {
             ...options.headers,
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
         }
 
-        let response = await fetch(`${API_URL}${url}`, { ...options, headers })
+        const fetchWithContext = async (requestUrl: string, requestOptions: RequestInit) => {
+            try {
+                return await fetch(requestUrl, requestOptions)
+            } catch {
+                throw new Error('No hay conexion con la API local (puerto 3001). Inicia la app con `npm run electron:dev`.')
+            }
+        }
 
-        // Si el token expiró, intentar refresh
+        let response = await fetchWithContext(`${API_URL}${url}`, { ...options, headers })
+
         if (response.status === 401) {
             const refreshed = await refreshAuth()
             if (refreshed) {
                 const newToken = useAuthStore.getState().token
-                response = await fetch(`${API_URL}${url}`, {
+                response = await fetchWithContext(`${API_URL}${url}`, {
                     ...options,
-                    headers: { ...headers, 'Authorization': `Bearer ${newToken}` },
+                    headers: { ...headers, Authorization: `Bearer ${newToken}` },
                 })
             } else {
                 logout()
@@ -213,5 +166,5 @@ export function useAuthFetch() {
         }
 
         return response
-    }
+    }, [logout, refreshAuth, token])
 }

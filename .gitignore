@@ -11,6 +11,7 @@ coverage/
 ## Producción
 dist/
 dist-electron/
+build-resources/
 release/
 *.exe
 *.dmg

@@ -1,93 +1,66 @@
-# System Architecture
+# ARCHITECTURE.md - Mapa del Sistema
 
-<!-- 
-INSTRUCCIONES:
-Este archivo documenta la ARQUITECTURA de tu sistema.
-Se genera automáticamente con /map pero puedes editarlo para agregar detalles.
--->
+## 1) Vista General
 
-## 🏗️ Vista General
+Tipo: app desktop (Electron) con backend embebido (Fastify) y frontend React.
 
-**Tipo de aplicación:** [Web app, API, Dashboard, etc.]
+Patron: monolito modular local-first.
 
-**Patrón arquitectónico:** [MVC, Microservicios, Jamstack, etc.]
+Flujo principal:
+- Usuario -> React (renderer)
+- React -> API local (`http://127.0.0.1:3001/api`)
+- API -> Prisma -> SQLite
 
----
-
-## 📦 Componentes Principales
+## 2) Componentes
 
 ### Frontend
-- **Framework:** [Nombre del framework]
-- **Responsabilidades:** [Qué hace]
-- **Tecnologías clave:** [Lista de libs/herramientas]
+- React + Router + Zustand
+- Carga diferida por ruta (`React.lazy` + `Suspense`) para reducir peso inicial
+- Paginas por dominio:
+  - ventas, inventario, clientes, proveedores, compras, crm-pipeline, finanzas, personal, reportes
 
-### Backend (si aplica)
-- **Framework:** [Nombre del framework]
-- **Responsabilidades:** [Qué hace]
-- **Tecnologías clave:** [Lista de libs/herramientas]
+### Backend
+- Fastify con JWT y RBAC
+- Dominios API:
+  - auth, setup, users, logs
+  - products, sales, quotes
+  - customers, suppliers, purchases
+  - leads (pipeline + reminders)
+  - expenses, employees
 
-### Base de Datos
-- **Tipo:** [SQL, NoSQL, etc.]
-- **Provider:** [Supabase, MongoDB, etc.]
-- **Esquema principal:** [Descripción breve]
+### Persistencia
+- Prisma ORM
+- SQLite por entorno:
+  - Dev: `prisma/saori.db`
+  - Instalador: DB en `userData` de Electron
+  - Primer arranque instalador: copia de plantilla empaquetada `db/saori-template.db`
 
----
+## 3) Seguridad y Runtime
 
-## 🔄 Flujo de Datos
+- Host API: loopback local (`127.0.0.1`)
+- CORS:
+  - `http://localhost:5173`, `http://localhost:3000` en dev
+  - `Origin: null` para `file://` empaquetado
+- Secret JWT:
+  - generado/persistido si no existe o es invalido
+- Endpoints de catalogos protegidos:
+  - `/api/categories` requiere `products:read`
+  - `/api/expense-categories` requiere `expenses:read`
 
-```
-Usuario → [Frontend] → [API/Backend] → [Base de Datos]
-                ↓
-         [Servicios Externos]
-```
+## 4) Build
 
----
+- Frontend: `vite build` -> `dist/`
+- Electron main/preload/server: `electron:compile` (`esbuild`) -> `dist-electron/`
+- Instalador: `electron-builder` -> `release/`
 
-## 🌐 Integraciones Externas
+## 5) Dependencias de Dominio
 
-| Servicio | Propósito | Documentación |
-|----------|-----------|---------------|
-| [Nombre] | [Para qué se usa] | [Link a docs] |
+- Cotizaciones se pueden convertir en ventas.
+- Compras impacta stock en recepcion.
+- CRM Pipeline mantiene ciclo comercial y alertas de seguimiento.
+- Setup inicial crea primer ADMIN y sucursal cuando la DB no tiene usuarios.
 
----
+## 6) Riesgos Arquitectonicos Abiertos
 
-## 📂 Estructura de Carpetas
-
-```
-proyecto/
-├── src/
-│   ├── components/     # Componentes reutilizables
-│   ├── pages/          # Páginas/rutas
-│   ├── layouts/        # Layouts compartidos
-│   ├── lib/            # Utilidades y helpers
-│   └── styles/         # Estilos globales
-├── public/             # Assets estáticos
-└── .gsd/               # Documentación GSD
-```
-
----
-
-## 🔐 Seguridad & Autenticación
-
-**Estrategia:** [Descripción de cómo manejas auth]
-
-**Provider:** [Supabase Auth, Auth0, custom, etc.]
-
----
-
-## 📊 Diagramas
-
-<!-- Puedes agregar diagramas Mermaid aquí -->
-
-```mermaid
-graph TD
-    A[Usuario] --> B[Frontend]
-    B --> C[API]
-    C --> D[Base de Datos]
-```
-
----
-
-## 📝 Notas Técnicas
-
-[Detalles importantes sobre la arquitectura, limitaciones conocidas, etc.]
+- E2E smoke cubre flujos criticos, falta ampliar cobertura para mas escenarios.
+- Empaquetado Windows depende de permisos de symlink del host.

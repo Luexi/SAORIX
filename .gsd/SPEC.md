@@ -1,55 +1,77 @@
-# SPEC.md - Especificación del Proyecto
+# SPEC.md - Especificacion del Proyecto
 
-## Nombre del Proyecto
+## 1) Producto
 
-**SAORIX** (Saori Extended) - Sistema ERP/CRM/POS para Negocios
+Nombre: `SAORIX` (Saori Extended)  
+Tipo: ERP/CRM/POS de escritorio para PyMEs en Mexico  
+Release objetivo actual: `Beta Interna Windows`
 
-## Visión
+## 2) Problema y Objetivo
 
-Un ERP de escritorio moderno, rápido y completo para pequeños y medianos negocios en México.
+- Problema: pequeños negocios usan hojas sueltas o sistemas separados para ventas, inventario y seguimiento comercial.
+- Objetivo: concentrar operacion comercial y administrativa en una app local, rapida, con baja friccion de instalacion.
 
-## Stack Tecnológico
+## 3) Alcance v1 (Must-Have)
 
-- **Frontend**: React 18 + TypeScript + TailwindCSS + Zustand + Recharts
-- **Backend**: Fastify + Prisma + SQLite (migrable a PostgreSQL)
-- **Desktop**: Electron
-- **Build**: Vite + electron-builder
+Modulos funcionales:
+- Dashboard
+- POS
+- Historial de ventas
+- Inventario
+- Clientes (CRM base)
+- CRM Pipeline (leads por etapas + recordatorios)
+- Proveedores
+- Compras (orden de compra + recepcion de mercancia con ajuste de stock)
+- Finanzas (gastos)
+- Personal
+- Reportes
+- Usuarios (CRUD UI)
+- Logs (solo Admin)
+- Configuracion
+- Cotizaciones (alta, listado, cambio de estado, conversion a venta)
+- Asistente de primer usuario (alta de admin inicial cuando no hay usuarios)
 
-## Módulos Core (MVP)
+Requisitos de plataforma:
+- App desktop para Windows (beta interna)
+- Persistencia local en SQLite
+- API embebida local en loopback
 
-### ✅ Implementados
+## 4) Fuera de Alcance v1 (Post-Beta)
 
-1. **Dashboard** - Métricas en tiempo real
-2. **POS** - Punto de venta con carrito
-3. **Inventario** - CRUD productos y categorías
-4. **Clientes** - CRM con tags
-5. **Finanzas** - Registro de gastos
-6. **Personal** - Gestión básica de empleados
-7. **Reportes** - Reportes de ventas
-8. **Logs** - Auditoría (Admin only)
+- Multiusuario en red / sincronizacion cloud
+- Facturacion CFDI productiva
+- Nomina completa
+- Firma digital de instalador corporativo automatizada en pipeline
 
-### 🔧 Por Implementar
+## 5) Requisitos No Funcionales
 
-1. **Historial Ventas** - Ver ventas pasadas
-2. **Usuarios UI** - CRUD usuarios desde frontend
-3. **Proveedores** - Gestión de proveedores
-4. **Configuración** - Settings de la app
-5. **Caja Registradora** - Apertura/cierre de caja
+- Seguridad local:
+  - API solo en `127.0.0.1`
+  - JWT secret obligatorio en runtime
+- Portabilidad:
+  - DB en carpeta de usuario de la app en instalador
+- Trazabilidad:
+  - Decisiones en ADRs
+  - Estado por fase con evidencia de verify
+- Calidad:
+  - Tests unitarios en verde
+  - Smoke tests de APIs criticas
 
-### 🔮 Futuro (Post-MVP)
+## 6) Roles y Permisos
 
-- Facturación electrónica CFDI
-- Nómina completa con cálculos
-- Contabilidad
-- Multi-sucursal
-- Sincronización cloud
+- `ADMIN`: acceso total
+- `SUPERVISOR`: operacion comercial + compras + seguimiento
+- `VENDEDOR`: venta y seguimiento comercial limitado
 
-## Roles de Usuario
+## 7) Criterios de Aceptacion para Beta Interna Windows
 
-- **ADMIN**: Acceso total
-- **SUPERVISOR**: Acceso intermedio
-- **VENDEDOR**: Solo ventas y productos
-
-## Autor
-
-Luis González <luexigonzalez@gmail.com>
+- Build de app y backend compila sin errores.
+- Instalacion nueva no depende de Prisma CLI para crear tablas iniciales.
+- Instalacion nueva sin usuarios permite inicializar admin mediante asistente de primer usuario.
+- Login, POS, compras y pipeline CRM funcionan contra datos reales.
+- Recepcion de compras incrementa stock automaticamente.
+- Cotizacion se puede convertir a venta.
+- Migraciones Prisma aplican sobre base limpia.
+- Smoke E2E critico (`npm run test:e2e`) pasa en entorno de validacion.
+- Manual de usuario disponible y alineado al estado real.
+- Documentacion `.gsd` refleja estado real con metodologia `/plan -> /execute -> /verify`.

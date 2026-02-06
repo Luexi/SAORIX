@@ -25,6 +25,8 @@ const navItems: NavItem[] = [
     { icon: 'badge', label: 'Personal', path: '/personal' },
     { icon: 'description', label: 'Reportes', path: '/reportes' },
     { icon: 'local_shipping', label: 'Proveedores', path: '/proveedores' },
+    { icon: 'receipt_long', label: 'Compras', path: '/compras' },
+    { icon: 'conversion_path', label: 'CRM Pipeline', path: '/crm-pipeline' },
 ]
 
 const bottomItems: NavItem[] = [
